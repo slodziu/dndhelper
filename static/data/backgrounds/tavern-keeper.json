@@ -1,0 +1,13 @@
+{
+  "name": "Tavern Keeper",
+  "skillProficiencies": "Insight, Persuasion",
+  "languages": "Choose 1 language",
+  "equipment": "Traveler's clothes, signet ring of tavern, set of artisan tools, belt pouch with 15 gp",
+  "equipmentOptions": "Choose between brewer's supplies or cook's utensils",
+  "features": [
+    {
+      "name": "Tavern Network",
+      "description": "You have connections with tavern keepers, innkeepers, and barkeeps across the land. You can often find free lodging and meals at establishments where you're known, and can gather local gossip and information about recent events, prominent figures, and hidden locations."
+    }
+  ]
+}

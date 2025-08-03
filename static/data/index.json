@@ -1,0 +1,17 @@
+{
+  "backgrounds": [
+    {
+      "name": "Custom Scholar",
+      "filename": "custom-scholar.json",
+      "description": "A learned individual focused on research and knowledge acquisition"
+    },
+    {
+      "name": "Tavern Keeper",
+      "filename": "tavern-keeper.json", 
+      "description": "Someone who ran or worked in a tavern, with connections to local establishments"
+    }
+  ],
+  "classes": [],
+  "races": [],
+  "spells": []
+}
