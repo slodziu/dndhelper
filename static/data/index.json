@@ -9,6 +9,11 @@
       "name": "Tavern Keeper",
       "filename": "tavern-keeper.json", 
       "description": "Someone who ran or worked in a tavern, with connections to local establishments"
+    },
+    {
+      "name": "Chef",
+      "filename": "chef.json",
+      "description": "A culinary expert skilled in creating nourishing and healing meals"
     }
   ],
   "classes": [],

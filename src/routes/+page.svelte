@@ -14,11 +14,6 @@
    * Handle form submission
    * @param {Event} event - The form submit event
    */
-  async function greet(event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
-  }
 
   /**
    * Handle tile click from main menu
