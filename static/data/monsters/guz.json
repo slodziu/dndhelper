@@ -1,0 +1,41 @@
+{
+  "name": "Guz",
+  "size": "Medium",
+  "type": "humanoid",
+  "subtype": "half-orc",
+  "alignment": "chaotic neutral",
+  "armor_class": 12,
+  "armor_desc": "worn leather armor",
+  "hit_points": 27,
+  "hit_dice": "6d8+6",
+  "speed": {
+    "walk": 30
+  },
+  "strength": 14,
+  "dexterity": 12,
+  "constitution": 12,
+  "intelligence": 8,
+  "wisdom": 11,
+  "charisma": 10,
+  "skills": {
+    "Intimidation": "+2"
+  },
+  "senses": "passive Perception 10",
+  "languages": "Common, Orc",
+  "challenge_rating": "1/8",
+  "experience_points": 25,
+  "special_abilities": [
+    {
+      "name": "Reckless Attack",
+      "desc": "Guz can choose to gain advantage on all melee weapon attacks during his turn, but in return all attack rolls against him also have advantage until the start of his next turn."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Worn Battleaxe",
+      "desc": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 6 (1d8 + 2) slashing damage."
+    }
+  ],
+  "legendary_actions": [],
+  "notes": "Adjusted from CR 2 berserker to CR 1/8 bandit. Lowered HP, strength, and damage to be appropriate for level 1 encounters while keeping the signature Reckless Attack ability."
+}

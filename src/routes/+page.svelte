@@ -5,6 +5,7 @@
   import Modal from "$lib/Modal.svelte";
   import InitiativeTracker from "$lib/InitiativeTracker.svelte";
   import CharacterSheet from "$lib/CharacterSheet.svelte";
+  import MonsterManual from "$lib/MonsterManual.svelte";
   let name = $state("");
   let greetMsg = $state("");
   let activeModal = $state("");
@@ -77,10 +78,7 @@
   {:else if activeModal === 'initiative-tracker'}
     <InitiativeTracker />
   {:else if activeModal === 'monster-manual'}
-    <div class="coming-soon">
-      <h3>Monster Manual</h3>
-      <p>This feature is coming soon! Look up monster stats, abilities, and encounter information.</p>
-    </div>
+    <MonsterManual />
   {:else if activeModal === 'campaign-notes'}
     <div class="coming-soon">
       <h3>Campaign Notes</h3>

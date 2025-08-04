@@ -86,21 +86,22 @@ function namesMatch(name1, name2) {
 
 /**
  * Load custom data index (backwards compatibility + auto-detection)
- * @returns {Promise<{backgrounds: any[], classes: any[], races: any[], spells: any[]}>}
+ * @returns {Promise<{backgrounds: any[], classes: any[], races: any[], spells: any[], monsters: any[]}>}
  */
 export async function loadCustomDataIndex() {
   try {
-    const [backgrounds, classes, races, spells] = await Promise.all([
+    const [backgrounds, classes, races, spells, monsters] = await Promise.all([
       scanCustomFiles('backgrounds'),
       scanCustomFiles('classes'),
       scanCustomFiles('races'),
-      scanCustomFiles('spells')
+      scanCustomFiles('spells'),
+      scanCustomFiles('monsters')
     ]);
     
-    return { backgrounds, classes, races, spells };
+    return { backgrounds, classes, races, spells, monsters };
   } catch (error) {
     console.error('Error loading custom data:', error);
-    return { backgrounds: [], classes: [], races: [], spells: [] };
+    return { backgrounds: [], classes: [], races: [], spells: [], monsters: [] };
   }
 }
 
@@ -109,7 +110,7 @@ export async function loadCustomDataIndex() {
  * @param {string} type
  * @returns {Promise<any[]>}
  */
-async function scanCustomFiles(type) {
+export async function scanCustomFiles(type) {
   const foundFiles = [];
   
   // First check if there's a static index
@@ -180,12 +181,14 @@ function getCommonNamesForType(type) {
     'backgrounds': ['chef', 'scholar', 'merchant', 'soldier', 'noble', 'criminal', 'folk-hero', 'hermit', 'entertainer'],
     'classes': ['artificer', 'barbarian', 'bard', 'cleric', 'druid', 'fighter', 'monk', 'paladin'],
     'races': ['human', 'elf', 'dwarf', 'halfling', 'dragonborn', 'gnome', 'half-elf', 'half-orc'],
-    'spells': ['fireball', 'healing-word', 'magic-missile', 'cure-wounds', 'shield', 'thunderwave']
+    'spells': ['fireball', 'healing-word', 'magic-missile', 'cure-wounds', 'shield', 'thunderwave'],
+    'monsters': ['guz', 'goblin', 'orc', 'troll', 'dragon', 'owlbear', 'displacer-beast', 'beholder']
   };
   
   if (type === 'backgrounds') return commonNames.backgrounds;
   if (type === 'classes') return commonNames.classes;
   if (type === 'races') return commonNames.races;
   if (type === 'spells') return commonNames.spells;
+  if (type === 'monsters') return commonNames.monsters;
   return [];
 }

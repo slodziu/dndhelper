@@ -18,5 +18,22 @@
   ],
   "classes": [],
   "races": [],
-  "spells": []
+  "spells": [],
+  "monsters": [
+    {
+      "name": "Guz",
+      "filename": "guz.json",
+      "description": "A half-orc warrior adjusted for level 1 encounters"
+    },
+    {
+      "name": "Goblin Scout",
+      "filename": "goblin-scout.json",
+      "description": "A nimble goblin scout with stealth abilities"
+    },
+    {
+      "name": "Young Red Dragon",
+      "filename": "young-red-dragon.json",
+      "description": "A powerful young dragon for mid-level encounters"
+    }
+  ]
 }

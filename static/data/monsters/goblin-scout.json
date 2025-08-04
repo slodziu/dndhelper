@@ -1,0 +1,45 @@
+{
+  "name": "Goblin Scout",
+  "size": "Small",
+  "type": "humanoid",
+  "subtype": "goblinoid",
+  "alignment": "neutral evil",
+  "armor_class": 15,
+  "armor_desc": "leather armor, shield",
+  "hit_points": 7,
+  "hit_dice": "2d6",
+  "speed": {
+    "walk": 30
+  },
+  "strength": 8,
+  "dexterity": 14,
+  "constitution": 10,
+  "intelligence": 10,
+  "wisdom": 8,
+  "charisma": 8,
+  "skills": {
+    "Stealth": "+6"
+  },
+  "senses": "darkvision 60 ft., passive Perception 9",
+  "languages": "Common, Goblin",
+  "challenge_rating": "1/4",
+  "experience_points": 50,
+  "special_abilities": [
+    {
+      "name": "Nimble Escape",
+      "desc": "The goblin can take the Disengage or Hide action as a bonus action on each of its turns."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "desc": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 5 (1d6 + 2) slashing damage."
+    },
+    {
+      "name": "Shortbow",
+      "desc": "Ranged Weapon Attack: +4 to hit, range 80/320 ft., one target. Hit: 5 (1d6 + 2) piercing damage."
+    }
+  ],
+  "legendary_actions": [],
+  "notes": "Standard goblin scout used for reconnaissance and harassment."
+}

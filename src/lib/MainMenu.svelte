@@ -38,8 +38,7 @@
       title: 'Monster Manual',
       description: 'Look up monster stats',
       icon: '👹',
-      color: '#607D8B',
-      comingSoon: true
+      color: '#607D8B'
     },
     {
       id: 'campaign-notes',
