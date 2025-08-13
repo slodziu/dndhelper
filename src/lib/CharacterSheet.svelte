@@ -277,12 +277,41 @@
   /**
    * Export all characters to a file
    */
-  function handleExportCharacters() {
-    if (savedCharacters.length === 0) {
-      alert('No characters to export');
-      return;
+  async function handleExportCharacters() {
+    try {
+      if (savedCharacters.length === 0) {
+        alert('No characters to export');
+        return;
+      }
+
+      const timestamp = new Date().toISOString().split('T')[0];
+      const filename = `dnd-characters-backup-${timestamp}.json`;
+      
+      const data = JSON.stringify({
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        characters: savedCharacters
+      }, null, 2);
+
+      // Use web download method (works in both web and desktop)
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      URL.revokeObjectURL(url);
+      
+      console.log(`Successfully exported ${savedCharacters.length} characters to ${filename}`);
+      
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('Export failed. Please try again.');
     }
-    exportCharacters(savedCharacters);
   }
 
   /**
@@ -812,9 +841,6 @@
           📥 Import
           <input type="file" accept=".json" onchange={handleImportCharacters} style="display: none;" />
         </label>
-        <button class="info-btn" onclick={showStorageInfo} title="Show storage information">
-          ℹ️ Storage Info
-        </button>
       </div>
     </div>
   </div>

@@ -32,6 +32,16 @@
   "spells": [],
   "monsters": [
     {
+      "name": "Baboon",
+      "filename": "baboon.json",
+      "description": "Small primates known for their pack hunting tactics and agility"
+    },
+    {
+      "name": "Black Bear",
+      "filename": "black-bear.json",
+      "description": "Powerful omnivorous mammals found in forests and mountains"
+    },
+    {
       "name": "Guz",
       "filename": "guz.json",
       "description": "A half-orc warrior adjusted for level 1 encounters"

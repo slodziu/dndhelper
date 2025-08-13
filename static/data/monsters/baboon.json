@@ -1,0 +1,40 @@
+{
+  "name": "Baboon",
+  "size": "Small",
+  "type": "beast",
+  "subtype": "",
+  "alignment": "unaligned",
+  "armor_class": 12,
+  "armor_desc": "",
+  "hit_points": 3,
+  "hit_dice": "1d6",
+  "speed": {
+    "walk": 30,
+    "climb": 30
+  },
+  "strength": 8,
+  "dexterity": 14,
+  "constitution": 11,
+  "intelligence": 4,
+  "wisdom": 12,
+  "charisma": 6,
+  "skills": {},
+  "senses": "passive Perception 11",
+  "languages": "",
+  "challenge_rating": "0",
+  "experience_points": 10,
+  "special_abilities": [
+    {
+      "name": "Pack Tactics",
+      "desc": "The baboon has advantage on an attack roll against a creature if at least one of the baboon's allies is within 5 ft. of the creature and the ally isn't incapacitated."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "desc": "Melee Weapon Attack: +1 to hit, reach 5 ft., one target. Hit: (1d4 - 1) piercing damage."
+    }
+  ],
+  "legendary_actions": [],
+  "notes": "Small primates known for their pack hunting tactics and agility."
+}

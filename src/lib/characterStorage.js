@@ -5,39 +5,76 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { appDataDir, join } from '@tauri-apps/api/path';
+import { documentDir, homeDir, join } from '@tauri-apps/api/path';
 import { readTextFile, writeTextFile, exists, mkdir } from '@tauri-apps/plugin-fs';
 
 const CHARACTERS_FILE = 'characters.json';
 const BACKUP_KEY = 'dnd-saved-characters';
+const DND_FOLDER = 'DnD Helper';
 
 /**
  * Check if we're running in Tauri
  */
 function isTauri() {
-  return typeof window !== 'undefined' && window.__TAURI__;
+  // Check for various Tauri environment indicators
+  if (typeof window !== 'undefined') {
+    // Check for Tauri global objects
+    if (window.__TAURI__ || window.__TAURI_METADATA__ || window.__TAURI_INVOKE__) {
+      return true;
+    }
+    
+    // Check if we're in a webview (common in Tauri apps)
+    if (window.navigator && window.navigator.userAgent && 
+        window.navigator.userAgent.includes('Tauri')) {
+      return true;
+    }
+  }
+  
+  // Check if Tauri APIs are available through imports
+  try {
+    return typeof invoke !== 'undefined' && typeof documentDir !== 'undefined';
+  } catch {
+    // If imports fail, check for alternative detection
+    return typeof window !== 'undefined' && 
+           (window.location.protocol === 'tauri:' || 
+            window.location.hostname === 'tauri.localhost');
+  }
 }
 
 /**
  * Get the full path to the characters file
  */
 async function getCharactersFilePath() {
-  const appDataPath = await appDataDir();
-  return await join(appDataPath, CHARACTERS_FILE);
+  try {
+    // Try Documents directory first
+    const documentsPath = await documentDir();
+    const dndFolderPath = await join(documentsPath, DND_FOLDER);
+    return await join(dndFolderPath, CHARACTERS_FILE);
+  } catch (error) {
+    // Fallback to home directory
+    console.warn('Could not access Documents directory, using home directory:', error);
+    const homePath = await homeDir();
+    const dndFolderPath = await join(homePath, DND_FOLDER);
+    return await join(dndFolderPath, CHARACTERS_FILE);
+  }
 }
 
 /**
- * Ensure the app data directory exists
+ * Ensure the DnD Helper directory exists
  */
-async function ensureAppDataDir() {
+async function ensureDndHelperDir() {
   try {
-    const appDataPath = await appDataDir();
-    const dirExists = await exists(appDataPath);
+    const filePath = await getCharactersFilePath();
+    const folderPath = filePath.replace('/' + CHARACTERS_FILE, '').replace('\\' + CHARACTERS_FILE, '');
+    const dirExists = await exists(folderPath);
     if (!dirExists) {
-      await mkdir(appDataPath, { recursive: true });
+      await mkdir(folderPath, { recursive: true });
+      console.log('Created DnD Helper directory:', folderPath);
     }
+    return folderPath;
   } catch (error) {
-    console.warn('Could not create app data directory:', error);
+    console.warn('Could not create DnD Helper directory:', error);
+    throw error;
   }
 }
 
@@ -48,17 +85,17 @@ async function ensureAppDataDir() {
 export async function loadCharacters() {
   if (isTauri()) {
     try {
-      await ensureAppDataDir();
+      await ensureDndHelperDir();
       const filePath = await getCharactersFilePath();
       const fileExists = await exists(filePath);
       
       if (fileExists) {
         const content = await readTextFile(filePath);
         const characters = JSON.parse(content);
-        console.log(`Loaded ${characters.length} characters from file`);
+        console.log(`Loaded ${characters.length} characters from:`, filePath);
         return characters;
       } else {
-        console.log('Characters file does not exist yet');
+        console.log('Characters file does not exist yet. Path will be:', filePath);
         return [];
       }
     } catch (error) {
@@ -82,12 +119,13 @@ export async function loadCharacters() {
 export async function saveCharacters(characters) {
   if (isTauri()) {
     try {
-      await ensureAppDataDir();
+      const folderPath = await ensureDndHelperDir();
       const filePath = await getCharactersFilePath();
       const content = JSON.stringify(characters, null, 2);
       
       await writeTextFile(filePath, content);
-      console.log(`Saved ${characters.length} characters to file`);
+      console.log(`Saved ${characters.length} characters to:`, filePath);
+      console.log('You can find your characters at:', folderPath);
       
       // Also backup to localStorage as a fallback
       saveToLocalStorage(characters);
@@ -111,7 +149,12 @@ export async function saveCharacters(characters) {
  * @param {Array} characters - Characters to export
  * @param {string} filename - Optional filename
  */
-export function exportCharacters(characters, filename = null) {
+/**
+ * Export characters to a downloadable file
+ * @param {Array} characters - Characters to export
+ * @param {string} filename - Optional filename
+ */
+export async function exportCharacters(characters, filename = null) {
   const timestamp = new Date().toISOString().split('T')[0];
   const exportFilename = filename || `dnd-characters-backup-${timestamp}.json`;
   
@@ -120,17 +163,21 @@ export function exportCharacters(characters, filename = null) {
     version: '1.0',
     characters: characters
   }, null, 2);
-  
+
+  // Use web download method (works in both web and desktop apps)
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   
   const a = document.createElement('a');
   a.href = url;
   a.download = exportFilename;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
   
   URL.revokeObjectURL(url);
   console.log(`Exported ${characters.length} characters to ${exportFilename}`);
+  return true;
 }
 
 /**
