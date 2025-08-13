@@ -1,16 +1,25 @@
 <script>
+    // @ts-nocheck
     import { onMount } from 'svelte';
+    import { loadCharacters } from './characterStorage.js';
     
     let name = $state('');
     let initiative = $state('');
     
-    /** @type {Array<{name: string, initiative: number, isActive: boolean}>} */
+    /** @type {Array<{name: string, initiative: number, isActive: boolean, type?: string, data?: any}>} */
     let entries = $state([]);
     let currentTurnIndex = $state(0);
     let isPlaying = $state(false);
     let showMiniDiceRoller = $state(false);
     let diceInput = $state('');
     let lastRoll = $state('');
+    
+    // Character and monster lookup
+    let showLookupModal = $state(false);
+    let savedCharacters = $state([]);
+    let monsters = $state([]);
+    let selectedEntity = $state(null);
+    let showEntityModal = $state(false);
 
     function addEntry() {
         const trimmedName = name.trim();
@@ -19,7 +28,7 @@
         console.log('Adding entry:', { trimmedName, initiative, initiativeValue, isNaN: isNaN(initiativeValue) });
         
         if (trimmedName && !isNaN(initiativeValue) && initiativeValue >= 0) {
-            const newEntry = { name: trimmedName, initiative: initiativeValue, isActive: false };
+            const newEntry = { name: trimmedName, initiative: initiativeValue, isActive: false, type: 'manual' };
             entries = [...entries, newEntry].sort((a, b) => b.initiative - a.initiative);
             console.log('Entries after add:', entries);
             name = '';
@@ -32,6 +41,134 @@
             alert('Please enter a valid name and initiative value (number >= 0)');
         }
     }
+
+    /**
+     * Load characters and monsters for lookup
+     */
+    async function loadEntitiesForLookup() {
+        try {
+            // Load saved characters
+            savedCharacters = await loadCharacters();
+            
+            // Load monsters from static data
+            const monstersResponse = await fetch('/data/index.json');
+            const data = await monstersResponse.json();
+            monsters = data.monsters || [];
+        } catch (error) {
+            console.error('Error loading entities:', error);
+        }
+    }
+
+    /**
+     * Add entity (character or monster) to initiative tracker
+     */
+    function addEntityToInitiative(entity, entityType, customInitiative = null) {
+        // Use initiative field value if provided, otherwise use custom or random
+        let initiativeValue;
+        if (initiative && !isNaN(Number(initiative))) {
+            initiativeValue = Number(initiative);
+            initiative = ''; // Clear the field after use
+        } else if (customInitiative !== null) {
+            initiativeValue = customInitiative;
+        } else {
+            initiativeValue = Math.floor(Math.random() * 20) + 1;
+        }
+        
+        const newEntry = {
+            name: entity.name,
+            initiative: initiativeValue,
+            isActive: false,
+            type: entityType,
+            data: entity
+        };
+        
+        entries = [...entries, newEntry].sort((a, b) => b.initiative - a.initiative);
+        currentTurnIndex = 0;
+        updateActiveStates();
+        showLookupModal = false;
+    }
+
+    /**
+     * Show entity details when clicked
+     */
+    function showEntityDetails(entry) {
+        if (entry.data) {
+            // Entry from lookup with full data
+            // Extract the character data from the nested structure
+            if (entry.data.data) {
+                // Character from storage - data is nested in entry.data.data
+                selectedEntity = { ...entry.data.data, type: entry.type };
+            } else {
+                // Direct data (monster, etc.)
+                selectedEntity = { ...entry.data, type: entry.type };
+            }
+            showEntityModal = true;
+        } else {
+            // Manually added entry - create a basic entity object
+            selectedEntity = {
+                name: entry.name,
+                type: 'manual',
+                initiative: entry.initiative
+            };
+            showEntityModal = true;
+        }
+    }
+
+    /**
+     * Open the lookup modal
+     */
+    function openLookupModal() {
+        loadEntitiesForLookup();
+        showLookupModal = true;
+    }
+
+    /**
+     * Save initiative data to localStorage
+     */
+    function saveInitiativeData() {
+        if (typeof localStorage !== 'undefined') {
+            const data = {
+                entries,
+                currentTurnIndex,
+                isPlaying,
+                name,
+                initiative
+            };
+            localStorage.setItem('dnd-helper-initiative', JSON.stringify(data));
+        }
+    }
+
+    /**
+     * Load initiative data from localStorage
+     */
+    function loadInitiativeData() {
+        if (typeof localStorage !== 'undefined') {
+            try {
+                const saved = localStorage.getItem('dnd-helper-initiative');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    entries = data.entries || [];
+                    currentTurnIndex = data.currentTurnIndex || 0;
+                    isPlaying = data.isPlaying || false;
+                    name = data.name || '';
+                    initiative = data.initiative || '';
+                    updateActiveStates();
+                }
+            } catch (error) {
+                console.error('Failed to load initiative data:', error);
+            }
+        }
+    }
+
+    // Load data when component mounts
+    onMount(() => {
+        loadInitiativeData();
+    });
+
+    // Save data whenever entries change
+    $effect(() => {
+        saveInitiativeData();
+    });
 
     /**
      * Handle keydown events
@@ -261,6 +398,7 @@
             step="1"
         />
         <button onclick={addEntry}>Add</button>
+        <button onclick={openLookupModal} class="lookup-btn" title="Add from saved characters or monsters">📚 Lookup</button>
         {#if entries.length > 0}
             <button onclick={clearAll} class="clear-btn">Clear All</button>
         {/if}
@@ -283,9 +421,21 @@
 
             <div class="character-track">
                 {#each entries as entry, index}
-                    <div class="character-circle {entry.isActive ? 'active' : ''}" title="{entry.name} (Initiative: {entry.initiative})">
+                    <div 
+                        class="character-circle {entry.isActive ? 'active' : ''} {entry.type || 'manual'}" 
+                        title="{entry.name} (Initiative: {entry.initiative}) - Click for details"
+                        onclick={() => showEntityDetails(entry)}
+                        onkeydown={(e) => e.key === 'Enter' && showEntityDetails(entry)}
+                        role="button"
+                        tabindex="0"
+                    >
                         <span class="initials">{getInitials(entry.name)}</span>
                         <div class="initiative-badge">{entry.initiative}</div>
+                        {#if entry.type === 'character'}
+                            <div class="type-indicator">👤</div>
+                        {:else if entry.type === 'monster'}
+                            <div class="type-indicator">👹</div>
+                        {/if}
                     </div>
                 {/each}
             </div>
@@ -314,6 +464,249 @@
                     </li>
                 {/each}
             </ul>
+        </div>
+    {/if}
+
+    <!-- Lookup Modal -->
+    {#if showLookupModal}
+        <div class="modal-backdrop" 
+             onclick={() => showLookupModal = false}
+             onkeydown={(e) => e.key === 'Escape' && (showLookupModal = false)}
+             role="button"
+             tabindex="-1">
+            <div class="modal" 
+                 onclick={(e) => e.stopPropagation()}
+                 onkeydown={(e) => e.stopPropagation()}
+                 role="dialog"
+                 tabindex="-1">
+                <div class="modal-header">
+                    <h3>Add Character or Monster</h3>
+                    <button onclick={() => showLookupModal = false} class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    {#if savedCharacters.length > 0}
+                        <div class="entity-section">
+                            <h4>📚 Saved Characters</h4>
+                            <div class="entity-grid">
+                                {#each savedCharacters as character}
+                                    <div class="entity-card character">
+                                        <div class="entity-info">
+                                            <strong>{character.name}</strong>
+                                            <span>Level {character.level} {character.race} {character.class}</span>
+                                        </div>
+                                        <button onclick={() => addEntityToInitiative(character, 'character')} class="add-btn">Add</button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                    
+                    {#if monsters.length > 0}
+                        <div class="entity-section">
+                            <h4>👹 Monsters</h4>
+                            <div class="entity-grid">
+                                {#each monsters as monster}
+                                    <div class="entity-card monster">
+                                        <div class="entity-info">
+                                            <strong>{monster.name}</strong>
+                                            <span>{monster.description}</span>
+                                        </div>
+                                        <button onclick={() => addEntityToInitiative(monster, 'monster')} class="add-btn">Add</button>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Entity Details Modal -->
+    {#if showEntityModal && selectedEntity}
+        <div class="modal-backdrop" 
+             onclick={() => showEntityModal = false}
+             onkeydown={(e) => e.key === 'Escape' && (showEntityModal = false)}
+             role="button"
+             tabindex="-1">
+            <div class="modal entity-details" 
+                 onclick={(e) => e.stopPropagation()}
+                 onkeydown={(e) => e.stopPropagation()}
+                 role="dialog"
+                 tabindex="-1">
+                <div class="modal-header">
+                    <h3>{selectedEntity.name} {selectedEntity.type === 'character' ? '👤' : selectedEntity.type === 'monster' ? '👹' : '⚔️'}</h3>
+                    <button onclick={() => showEntityModal = false} class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    {#if selectedEntity.type === 'character'}
+                        <div class="character-details">
+                            <!-- Basic Character Info -->
+                            <div class="character-header">
+                                <div class="character-basic">
+                                    <div class="detail-row">
+                                        <strong>Level:</strong> {selectedEntity.level}
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Class:</strong> {selectedEntity.class}
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Race:</strong> {selectedEntity.race}
+                                    </div>
+                                    {#if selectedEntity.background}
+                                        <div class="detail-row">
+                                            <strong>Background:</strong> {selectedEntity.background}
+                                        </div>
+                                    {/if}
+                                </div>
+                                
+                                <!-- Combat Stats -->
+                                <div class="combat-stats">
+                                    {#if selectedEntity.armorClass}
+                                        <div class="stat-box">
+                                            <strong>AC</strong>
+                                            <span class="stat-value">{selectedEntity.armorClass}</span>
+                                        </div>
+                                    {/if}
+                                    {#if selectedEntity.hitPoints}
+                                        <div class="stat-box">
+                                            <strong>HP</strong>
+                                            <span class="stat-value">{selectedEntity.hitPoints.current}/{selectedEntity.hitPoints.maximum}</span>
+                                        </div>
+                                    {/if}
+                                    {#if selectedEntity.initiativeBonus}
+                                        <div class="stat-box">
+                                            <strong>Init</strong>
+                                            <span class="stat-value">+{selectedEntity.initiativeBonus}</span>
+                                        </div>
+                                    {/if}
+                                    {#if selectedEntity.passivePerception}
+                                        <div class="stat-box">
+                                            <strong>PP</strong>
+                                            <span class="stat-value">{selectedEntity.passivePerception}</span>
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <!-- Ability Scores -->
+                            {#if selectedEntity.stats}
+                                <div class="ability-scores">
+                                    <h4>Ability Scores</h4>
+                                    <div class="stats-grid">
+                                        <div class="ability-score">
+                                            <strong>STR</strong>
+                                            <span class="score">{selectedEntity.stats.strength}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.strength - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.strength - 10) / 2)})</span>
+                                        </div>
+                                        <div class="ability-score">
+                                            <strong>DEX</strong>
+                                            <span class="score">{selectedEntity.stats.dexterity}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.dexterity - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.dexterity - 10) / 2)})</span>
+                                        </div>
+                                        <div class="ability-score">
+                                            <strong>CON</strong>
+                                            <span class="score">{selectedEntity.stats.constitution}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.constitution - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.constitution - 10) / 2)})</span>
+                                        </div>
+                                        <div class="ability-score">
+                                            <strong>INT</strong>
+                                            <span class="score">{selectedEntity.stats.intelligence}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.intelligence - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.intelligence - 10) / 2)})</span>
+                                        </div>
+                                        <div class="ability-score">
+                                            <strong>WIS</strong>
+                                            <span class="score">{selectedEntity.stats.wisdom}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.wisdom - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.wisdom - 10) / 2)})</span>
+                                        </div>
+                                        <div class="ability-score">
+                                            <strong>CHA</strong>
+                                            <span class="score">{selectedEntity.stats.charisma}</span>
+                                            <span class="modifier">({Math.floor((selectedEntity.stats.charisma - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.stats.charisma - 10) / 2)})</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Features -->
+                            {#if selectedEntity.class_features && selectedEntity.class_features.length > 0}
+                                <div class="features-section">
+                                    <h4>Class Features</h4>
+                                    <div class="features-list">
+                                        {#each selectedEntity.class_features as feature}
+                                            <div class="feature-item">
+                                                <strong>{feature.name}</strong>
+                                                {#if feature.description}
+                                                    <p class="feature-desc">{feature.description.length > 100 ? feature.description.substring(0, 100) + '...' : feature.description}</p>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            {#if selectedEntity.race_features && selectedEntity.race_features.length > 0}
+                                <div class="features-section">
+                                    <h4>Racial Features</h4>
+                                    <div class="features-list">
+                                        {#each selectedEntity.race_features as feature}
+                                            <div class="feature-item">
+                                                <strong>{feature.name}</strong>
+                                                {#if feature.description}
+                                                    <p class="feature-desc">{feature.description.length > 100 ? feature.description.substring(0, 100) + '...' : feature.description}</p>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Items -->
+                            {#if selectedEntity.items && selectedEntity.items.length > 0}
+                                <div class="features-section">
+                                    <h4>Items</h4>
+                                    <div class="items-list">
+                                        {#each selectedEntity.items as item}
+                                            <div class="item">
+                                                <strong>{item.name}</strong>
+                                                {#if item.quantity > 1}
+                                                    <span class="quantity">x{item.quantity}</span>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Notes -->
+                            {#if selectedEntity.notes}
+                                <div class="features-section">
+                                    <h4>Notes</h4>
+                                    <p class="notes">{selectedEntity.notes}</p>
+                                </div>
+                            {/if}
+                        </div>
+                    {:else if selectedEntity.type === 'monster'}
+                        <div class="monster-details">
+                            <p>{selectedEntity.description}</p>
+                            <!-- Add more monster details here if available -->
+                        </div>
+                    {:else if selectedEntity.type === 'manual'}
+                        <div class="manual-entry-details">
+                            <div class="manual-info">
+                                <h4>⚔️ Combat Participant</h4>
+                                <p>This is a manually added entry to the initiative tracker.</p>
+                                <div class="detail-row">
+                                    <strong>Current Initiative:</strong> {selectedEntity.initiative}
+                                </div>
+                                <div class="manual-note">
+                                    <p><em>💡 Tip: For full character details, add characters through the "📚 Lookup" button instead of manual entry.</em></p>
+                                </div>
+                            </div>
+                        </div>
+                    {/if}
+                </div>
+            </div>
         </div>
     {/if}
 </div>
@@ -891,6 +1284,538 @@
         .current-turn {
             font-size: 1rem;
             padding: 0.75rem;
+        }
+    }
+
+    /* Lookup button */
+    .lookup-btn {
+        background-color: #2196F3;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .lookup-btn:hover {
+        background-color: #1976D2;
+    }
+
+    /* Character circle enhancements */
+    .character-circle {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .character-circle:hover {
+        transform: scale(1.05);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    .character-circle.character {
+        border-color: #4CAF50;
+    }
+
+    .character-circle.monster {
+        border-color: #f44336;
+    }
+
+    .type-indicator {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        background: white;
+        border-radius: 50%;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        border: 1px solid #ddd;
+    }
+
+    /* Modal styling */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        padding: 1rem;
+    }
+
+    .modal {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        width: 100%;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: #f8f9fa;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        color: #333;
+    }
+
+    .modal-content {
+        padding: 1rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .entity-section {
+        margin-bottom: 2rem;
+    }
+
+    .entity-section h4 {
+        margin: 0 0 1rem 0;
+        color: #333;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 0.5rem;
+    }
+
+    .entity-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .entity-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        transition: all 0.2s ease;
+    }
+
+    .entity-card:hover {
+        border-color: #2196F3;
+        box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+    }
+
+    .entity-card.character {
+        border-left: 4px solid #4CAF50;
+    }
+
+    .entity-card.monster {
+        border-left: 4px solid #f44336;
+    }
+
+    .entity-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .entity-info span {
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .add-btn {
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .add-btn:hover {
+        background-color: #45a049;
+    }
+
+    /* Entity details modal */
+    .entity-details {
+        max-width: 700px;
+        max-height: 90vh;
+    }
+
+    .character-details, .monster-details {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .character-header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 2rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .character-basic {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .combat-stats {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+
+    .stat-box {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.75rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        min-width: 60px;
+    }
+
+    .stat-box strong {
+        font-size: 0.8rem;
+        color: #666;
+        margin-bottom: 0.25rem;
+    }
+
+    .stat-value {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #333;
+    }
+
+    .ability-scores h4 {
+        margin: 0 0 1rem 0;
+        color: #333;
+        font-size: 1.1rem;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 0.5rem;
+    }
+
+    .ability-score {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        text-align: center;
+    }
+
+    .ability-score strong {
+        font-size: 0.8rem;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+
+    .score {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 0.25rem;
+    }
+
+    .modifier {
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .features-section {
+        border-top: 1px solid #e0e0e0;
+        padding-top: 1rem;
+    }
+
+    .features-section h4 {
+        margin: 0 0 0.75rem 0;
+        color: #333;
+        font-size: 1rem;
+    }
+
+    .features-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .feature-item {
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border-left: 3px solid #2196F3;
+    }
+
+    .feature-desc {
+        margin: 0.5rem 0 0 0;
+        font-size: 0.9rem;
+        color: #666;
+        line-height: 1.4;
+    }
+
+    .items-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        background: #f0f0f0;
+        border-radius: 15px;
+        font-size: 0.9rem;
+    }
+
+    .quantity {
+        background: #2196F3;
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 10px;
+        font-size: 0.8rem;
+    }
+
+    .notes {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #4CAF50;
+        margin: 0;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+    }
+
+    /* Manual entry details */
+    .manual-entry-details {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .manual-info h4 {
+        margin: 0 0 1rem 0;
+        color: #333;
+        font-size: 1.2rem;
+        text-align: center;
+    }
+
+    .manual-info p {
+        text-align: center;
+        color: #666;
+        margin-bottom: 1rem;
+    }
+
+    .manual-note {
+        background: #e3f2fd;
+        border: 1px solid #90caf9;
+        border-radius: 6px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+
+    .manual-note p {
+        margin: 0;
+        color: #1565c0;
+        font-size: 0.9rem;
+        text-align: left;
+    }
+
+    .detail-row {
+        display: flex;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+
+    .stats-grid div {
+        padding: 0.5rem;
+        background: #f0f0f0;
+        border-radius: 4px;
+        text-align: center;
+        font-size: 0.9rem;
+    }
+
+    @media (max-width: 768px) {
+        .character-header {
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        .combat-stats {
+            justify-content: center;
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .modal {
+            background: #2f2f2f;
+            color: #f6f6f6;
+        }
+
+        .modal-header {
+            background: #404040;
+            border-bottom-color: #555;
+        }
+
+        .modal-header h3 {
+            color: #f6f6f6;
+        }
+
+        .entity-section h4 {
+            color: #f6f6f6;
+            border-bottom-color: #555;
+        }
+
+        .entity-card {
+            background: #404040;
+            border-color: #666;
+        }
+
+        .entity-card:hover {
+            border-color: #64b5f6;
+        }
+
+        .entity-info span {
+            color: #ccc;
+        }
+
+        .detail-row {
+            background: #404040;
+        }
+
+        .stats-grid div {
+            background: #404040;
+        }
+
+        .character-header {
+            background: #404040;
+            border-color: #666;
+        }
+
+        .stat-box {
+            background: #2f2f2f;
+            border-color: #555;
+        }
+
+        .stat-box strong {
+            color: #ccc;
+        }
+
+        .stat-value {
+            color: #f6f6f6;
+        }
+
+        .ability-scores h4 {
+            color: #f6f6f6;
+            border-bottom-color: #555;
+        }
+
+        .ability-score {
+            background: #2f2f2f;
+            border-color: #555;
+        }
+
+        .ability-score strong {
+            color: #ccc;
+        }
+
+        .score {
+            color: #f6f6f6;
+        }
+
+        .modifier {
+            color: #ccc;
+        }
+
+        .features-section {
+            border-top-color: #555;
+        }
+
+        .features-section h4 {
+            color: #f6f6f6;
+        }
+
+        .feature-item {
+            background: #404040;
+            border-left-color: #64b5f6;
+        }
+
+        .feature-desc {
+            color: #ccc;
+        }
+
+        .item {
+            background: #404040;
+            color: #f6f6f6;
+        }
+
+        .notes {
+            background: #404040;
+            border-left-color: #4CAF50;
+            color: #f6f6f6;
+        }
+
+        .manual-entry-details {
+            background: #404040;
+            border-color: #666;
+        }
+
+        .manual-info h4 {
+            color: #f6f6f6;
+        }
+
+        .manual-info p {
+            color: #ccc;
+        }
+
+        .manual-note {
+            background: #555;
+            border-color: #777;
+        }
+
+        .manual-note p {
+            color: #ccc;
         }
     }
 </style>

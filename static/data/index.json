@@ -14,10 +14,21 @@
       "name": "Chef",
       "filename": "chef.json",
       "description": "A culinary expert skilled in creating nourishing and healing meals"
+    },
+    {
+      "name": "Fisher",
+      "filename": "fisher.json",
+      "description": "A maritime lifestyle focused on fishing and ocean survival skills"
     }
   ],
   "classes": [],
-  "races": [],
+  "races": [
+    {
+      "name": "Kenku",
+      "filename": "kenku.json",
+      "description": "Feathered folk who resemble ravens, blessed with keen observation and supernaturally accurate memories"
+    }
+  ],
   "spells": [],
   "monsters": [
     {

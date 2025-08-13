@@ -1,15 +1,22 @@
 <script>
+  // @ts-nocheck
   import { onMount } from 'svelte';
   import { enhancedLookup } from './customDataManager.js';
+  import { loadCharacters, saveCharacters, exportCharacters, importCharacters, getStorageInfo } from './characterStorage.js';
   
   // Character field configuration - ADD NEW FIELDS HERE!
   const CHARACTER_FIELDS = {
-    // Basic Info
-    name: { type: 'text', default: '', label: 'Name', placeholder: 'Character Name' },
-    level: { type: 'number', default: 1, label: 'Level', min: 1, max: 20 },
-    class: { type: 'text', default: '', label: 'Class', placeholder: 'Fighter, Wizard, etc.' },
-    race: { type: 'text', default: '', label: 'Race', placeholder: 'Human, Elf, etc.' },
-    background: { type: 'text', default: '', label: 'Background', placeholder: 'Acolyte, Criminal, etc.' },
+  // Basic Info
+  name: { type: 'text', default: '', label: 'Name', placeholder: 'Character Name' },
+  level: { type: 'number', default: 1, label: 'Level', min: 1, max: 20 },
+  class: { type: 'text', default: '', label: 'Class', placeholder: 'Fighter, Wizard, etc.' },
+  race: { type: 'text', default: '', label: 'Race', placeholder: 'Human, Elf, etc.' },
+  background: { type: 'text', default: '', label: 'Background', placeholder: 'Acolyte, Criminal, etc.' },
+
+  // Combat/Perception
+  armorClass: { type: 'number', default: 10, label: 'Armor Class', min: 0, max: 30 },
+  initiativeBonus: { type: 'number', default: 0, label: 'Initiative Bonus', min: -10, max: 20 },
+  passivePerception: { type: 'number', default: 10, label: 'Passive Perception', min: 0, max: 30 },
     
     // Complex fields
     stats: { 
@@ -37,7 +44,9 @@
     
     // Arrays
     items: { type: 'array', default: [] },
-    class_features: { type: 'array', default: [] },
+  class_features: { type: 'array', default: [] },
+  race_features: { type: 'array', default: [] },
+  background_features: { type: 'array', default: [] },
     spells: { type: 'array', default: [] }
   };
 
@@ -109,6 +118,10 @@
   let apiLoading = $state(false);
   let apiError = $state('');
 
+  // Description modal state
+  let showDescModal = $state(false);
+  let expandedText = $state('');
+
   /**
    * Calculate ability modifier
    * @param {number} score
@@ -128,28 +141,25 @@
   }
 
   /**
-   * Load saved characters from localStorage
+   * Load saved characters from persistent storage
    */
-  function loadSavedCharacters() {
-    if (typeof localStorage !== 'undefined') {
-      const saved = localStorage.getItem('dnd-saved-characters');
-      if (saved) {
-        try {
-          savedCharacters = JSON.parse(saved);
-        } catch (error) {
-          console.error('Error loading saved characters:', error);
-          savedCharacters = [];
-        }
-      }
+  async function loadSavedCharacters() {
+    try {
+      savedCharacters = await loadCharacters();
+    } catch (error) {
+      console.error('Error loading saved characters:', error);
+      savedCharacters = [];
     }
   }
 
   /**
-   * Save characters to localStorage
+   * Save characters to persistent storage
    */
-  function saveToStorage() {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('dnd-saved-characters', JSON.stringify(savedCharacters));
+  async function saveToStorage() {
+    try {
+      await saveCharacters(savedCharacters);
+    } catch (error) {
+      console.error('Error saving characters:', error);
     }
   }
 
@@ -179,7 +189,7 @@
   /**
    * Save current character
    */
-  function saveCharacter() {
+  async function saveCharacter() {
     if (!saveCharacterName.trim()) {
       alert('Please enter a character name');
       return;
@@ -223,7 +233,7 @@
       selectedCharacterId = newCharacter.id;
     }
 
-    saveToStorage();
+    await saveToStorage();
     showSaveDialog = false;
     saveCharacterName = '';
   }
@@ -250,17 +260,88 @@
    * Delete character
    * @param {string} characterId
    */
-  function deleteCharacter(characterId) {
+  async function deleteCharacter(characterId) {
     const characterToDelete = savedCharacters.find(c => c.id === characterId);
     
     if (characterToDelete && confirm(`Are you sure you want to delete "${characterToDelete.name}"?`)) {
       savedCharacters = savedCharacters.filter(c => c.id !== characterId);
-      saveToStorage();
+      await saveToStorage();
       
       // Clear selection if deleted character was selected
       if (selectedCharacterId === characterId) {
         selectedCharacterId = '';
       }
+    }
+  }
+
+  /**
+   * Export all characters to a file
+   */
+  function handleExportCharacters() {
+    if (savedCharacters.length === 0) {
+      alert('No characters to export');
+      return;
+    }
+    exportCharacters(savedCharacters);
+  }
+
+  /**
+   * Import characters from a file
+   */
+  function handleImportCharacters(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    importCharacters(file)
+      .then(async (importedCharacters) => {
+        if (importedCharacters.length === 0) {
+          alert('No valid characters found in file');
+          return;
+        }
+
+        const existingNames = savedCharacters.map(c => c.name.toLowerCase());
+        let imported = 0;
+
+        for (const char of importedCharacters) {
+          // Generate new ID and ensure unique name
+          const newChar = {
+            ...char,
+            id: generateId(),
+            importedAt: new Date().toISOString()
+          };
+
+          // Check for name conflicts
+          if (existingNames.includes(char.name?.toLowerCase())) {
+            newChar.name = `${char.name} (imported)`;
+          }
+
+          savedCharacters = [...savedCharacters, newChar];
+          imported++;
+        }
+
+        await saveToStorage();
+        alert(`Successfully imported ${imported} characters`);
+        
+        // Clear the file input
+        event.target.value = '';
+      })
+      .catch((error) => {
+        console.error('Import failed:', error);
+        alert(`Import failed: ${error.message}`);
+        event.target.value = '';
+      });
+  }
+
+  /**
+   * Show storage information (for debugging)
+   */
+  async function showStorageInfo() {
+    try {
+      const info = await getStorageInfo();
+      console.log('Storage Info:', info);
+      alert(`Storage: ${info.platform}\nFile path: ${info.filePath || 'N/A'}\nFile exists: ${info.fileExists || 'N/A'}`);
+    } catch (error) {
+      console.error('Error getting storage info:', error);
     }
   }
 
@@ -393,23 +474,41 @@
     showApiPopup = true;
     
     try {
-      const formattedName = formatForApi(raceName.trim());
-      const response = await fetch(`https://www.dnd5eapi.co/api/races/${formattedName}`);
+      const result = await enhancedLookup(raceName.trim(), 'races', 'races');
       
-      if (!response.ok) {
-        throw new Error(`Race "${raceName}" not found in D&D 5e API`);
+      if (!result) {
+        throw new Error(`Race "${raceName}" not found in D&D 5e API or custom data`);
       }
       
-      const data = await response.json();
+      const data = result.data;
+      const source = result.source;
+      
+      // Handle both API format and custom format
+      let traits = [];
+      if (source === 'api') {
+        // API format - traits are simple text
+        traits = data.traits?.map(t => `${t.name}: Check API for details`).join('\n') || '';
+      } else {
+        // Custom format - traits are objects with name and description
+        traits = data.traits || [];
+      }
+      
       apiData = {
         type: 'race',
         name: data.name,
-        size: data.size,
-        speed: data.speed,
-        abilityBonuses: data.ability_bonuses?.map(ab => `${ab.ability_score?.name}: +${ab.bonus}`).join(', ') || '',
-        languages: data.languages?.map(l => l.name).join(', ') || '',
-        proficiencies: data.starting_proficiencies?.map(p => p.name).join(', ') || '',
-        traits: data.traits?.map(t => `${t.name}: Check API for details`).join('\n') || ''
+        size: source === 'api' ? data.size : data.size,
+        speed: source === 'api' ? data.speed : data.speed,
+        abilityBonuses: source === 'api' 
+          ? data.ability_bonuses?.map(ab => `${ab.ability_score?.name}: +${ab.bonus}`).join(', ') || ''
+          : data.abilityBonuses || '',
+        languages: source === 'api'
+          ? data.languages?.map(l => l.name).join(', ') || ''
+          : data.languages || '',
+        proficiencies: source === 'api'
+          ? data.starting_proficiencies?.map(p => p.name).join(', ') || ''
+          : data.proficiencies || '',
+        traits: traits,
+        source: source // Track where the data came from
       };
     } catch (error) {
       apiError = error.message;
@@ -628,11 +727,10 @@
    * @param {Object} feature
    */
   function addBackgroundFeatureFromApi(feature) {
-    const existingFeature = character.class_features.find(cf => cf.name === feature.name);
+    const existingFeature = character.background_features.find(bf => bf.name === feature.name);
     if (!existingFeature) {
-      character.class_features.push({
+      character.background_features.push({
         name: feature.name,
-        level: 1, // Background features are available from level 1
         description: feature.description || `${character.background || 'Background'} feature`
       });
       character = character; // Trigger reactivity
@@ -645,7 +743,31 @@
    * @returns {boolean}
    */
   function isFeatureAlreadyAdded(featureName) {
-    return character.class_features.some(cf => cf.name === featureName);
+    return character.background_features.some(bf => bf.name === featureName);
+  }
+
+  /**
+   * Add selected race trait from API
+   * @param {Object} trait
+   */
+  function addRaceTraitFromApi(trait) {
+    const existingTrait = character.race_features.find(rf => rf.name === trait.name);
+    if (!existingTrait) {
+      character.race_features.push({
+        name: trait.name,
+        description: trait.description || `${character.race || 'Racial'} trait`
+      });
+      character = character; // Trigger reactivity
+    }
+  }
+
+  /**
+   * Check if a trait is already added to the character
+   * @param {string} traitName
+   * @returns {boolean}
+   */
+  function isTraitAlreadyAdded(traitName) {
+    return character.race_features.some(rf => rf.name === traitName);
   }
 
   // Load saved characters when component mounts
@@ -680,6 +802,19 @@
       <div class="action-buttons">
         <button class="new-btn" onclick={newCharacter}>New Character</button>
         <button class="save-btn" onclick={openSaveDialog}>{selectedCharacterId ? 'Update Character' : 'Save Character'}</button>
+      </div>
+      
+      <div class="backup-buttons">
+        <button class="export-btn" onclick={handleExportCharacters} title="Export all characters to file">
+          📤 Export All
+        </button>
+        <label class="import-btn" title="Import characters from file">
+          📥 Import
+          <input type="file" accept=".json" onchange={handleImportCharacters} style="display: none;" />
+        </label>
+        <button class="info-btn" onclick={showStorageInfo} title="Show storage information">
+          ℹ️ Storage Info
+        </button>
       </div>
     </div>
   </div>
@@ -748,6 +883,25 @@
           </div>
         {/if}
       {/each}
+    </div>
+  </div>
+
+
+  <div class="combat-section">
+    <h4>Combat & Perception</h4>
+    <div class="combat-grid">
+      <div class="input-group">
+        <label for="armor-class">Armor Class:</label>
+        <input id="armor-class" type="number" min="0" max="30" bind:value={character.armorClass} />
+      </div>
+      <div class="input-group">
+        <label for="initiative-bonus">Initiative Bonus:</label>
+        <input id="initiative-bonus" type="number" min="-10" max="20" bind:value={character.initiativeBonus} />
+      </div>
+      <div class="input-group">
+        <label for="passive-perception">Passive Perception:</label>
+        <input id="passive-perception" type="number" min="0" max="30" bind:value={character.passivePerception} />
+      </div>
     </div>
   </div>
 
@@ -836,6 +990,7 @@
     {/if}
   </div>
 
+
   <!-- Class Features Section -->
   <div class="class-features-section">
     <div class="section-header">
@@ -863,14 +1018,101 @@
                 class="feature-level"
                 placeholder="Lvl"
               >
-              <input 
-                type="text" 
-                bind:value={feature.description} 
-                placeholder="Description"
-                class="feature-description"
-              >
+              <div class="expandable-description">
+                <input 
+                  type="text" 
+                  bind:value={feature.description} 
+                  placeholder="Description"
+                  class="feature-description"
+                  readonly={feature.description && feature.description.length > 80}
+                  onclick={() => feature.description && feature.description.length > 80 && (expandedText = feature.description, showDescModal = true)}
+                >
+                {#if feature.description && feature.description.length > 80}
+                  <button class="show-more-btn" onclick={() => (expandedText = feature.description, showDescModal = true)}>Show more</button>
+                {/if}
+              </div>
             </div>
             <button class="remove-btn" onclick={() => removeClassFeature(index)}>×</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Racial Features Section -->
+  <div class="race-features-section">
+    <div class="section-header">
+      <h4>Racial Features</h4>
+      <button class="add-btn" onclick={() => character.race_features.push({ name: '', description: '' })}>+ Add Feature</button>
+    </div>
+    {#if character.race_features.length === 0}
+      <p class="empty-message">No racial features added yet.</p>
+    {:else}
+      <div class="features-list">
+        {#each character.race_features as feature, index}
+          <div class="feature-row">
+            <div class="feature-inputs">
+              <input 
+                type="text" 
+                bind:value={feature.name} 
+                placeholder="Feature name"
+                class="feature-name"
+              >
+              <div class="expandable-description">
+                <input 
+                  type="text" 
+                  bind:value={feature.description} 
+                  placeholder="Description"
+                  class="feature-description"
+                  readonly={feature.description && feature.description.length > 80}
+                  onclick={() => feature.description && feature.description.length > 80 && (expandedText = feature.description, showDescModal = true)}
+                >
+                {#if feature.description && feature.description.length > 80}
+                  <button class="show-more-btn" onclick={() => (expandedText = feature.description, showDescModal = true)}>Show more</button>
+                {/if}
+              </div>
+            </div>
+            <button class="remove-btn" onclick={() => character.race_features.splice(index, 1)}>×</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Background Features Section -->
+  <div class="background-features-section">
+    <div class="section-header">
+      <h4>Background Features</h4>
+      <button class="add-btn" onclick={() => character.background_features.push({ name: '', description: '' })}>+ Add Feature</button>
+    </div>
+    {#if character.background_features.length === 0}
+      <p class="empty-message">No background features added yet.</p>
+    {:else}
+      <div class="features-list">
+        {#each character.background_features as feature, index}
+          <div class="feature-row">
+            <div class="feature-inputs">
+              <input 
+                type="text" 
+                bind:value={feature.name} 
+                placeholder="Feature name"
+                class="feature-name"
+              >
+              <div class="expandable-description">
+                <input 
+                  type="text" 
+                  bind:value={feature.description} 
+                  placeholder="Description"
+                  class="feature-description"
+                  readonly={feature.description && feature.description.length > 80}
+                  onclick={() => feature.description && feature.description.length > 80 && (expandedText = feature.description, showDescModal = true)}
+                >
+                {#if feature.description && feature.description.length > 80}
+                  <button class="show-more-btn" onclick={() => (expandedText = feature.description, showDescModal = true)}>Show more</button>
+                {/if}
+              </div>
+            </div>
+            <button class="remove-btn" onclick={() => character.background_features.splice(index, 1)}>×</button>
           </div>
         {/each}
       </div>
@@ -920,12 +1162,19 @@
                 placeholder="School (e.g., Evocation)"
                 class="spell-school"
               >
-              <input 
-                type="text" 
-                bind:value={spell.description} 
-                placeholder="Description"
-                class="spell-description"
-              >
+              <div class="expandable-description">
+                <input 
+                  type="text" 
+                  bind:value={spell.description} 
+                  placeholder="Description"
+                  class="spell-description"
+                  readonly={spell.description && spell.description.length > 80}
+                  onclick={() => spell.description && spell.description.length > 80 && (expandedText = spell.description, showDescModal = true)}
+                >
+                {#if spell.description && spell.description.length > 80}
+                  <button class="show-more-btn" onclick={() => (expandedText = spell.description, showDescModal = true)}>Show more</button>
+                {/if}
+              </div>
             </div>
             <button class="remove-btn" onclick={() => removeSpell(index)}>×</button>
           </div>
@@ -1056,12 +1305,43 @@
                   {#if apiData.proficiencies}
                     <div><strong>Proficiencies:</strong> {apiData.proficiencies}</div>
                   {/if}
-                  {#if apiData.traits}
+                </div>
+                {#if apiData.traits}
+                  {#if apiData.source === 'api'}
+                    <!-- API format - traits as string -->
                     <div><strong>Racial Traits:</strong>
                       <pre class="traits">{apiData.traits}</pre>
                     </div>
+                  {:else}
+                    <!-- Custom format - traits as objects -->
+                    <div class="race-traits">
+                      <h4>Racial Traits:</h4>
+                      <div class="traits-grid">
+                        {#each apiData.traits as trait}
+                          <div class="trait-card">
+                            <div class="trait-info">
+                              <strong>{trait.name}</strong>
+                              <div class="expandable-description">
+                                <p class="trait-description">{trait.description.length > 100 ? trait.description.substring(0, 100) + '...' : trait.description}</p>
+                                {#if trait.description.length > 100}
+                                  <button class="show-more-btn" onclick={() => (expandedText = trait.description, showDescModal = true)}>Show more</button>
+                                {/if}
+                              </div>
+                            </div>
+                            <button 
+                              class="add-trait-btn {isTraitAlreadyAdded(trait.name) ? 'added' : ''}" 
+                              onclick={() => addRaceTraitFromApi(trait)}
+                              disabled={isTraitAlreadyAdded(trait.name)}
+                              title={isTraitAlreadyAdded(trait.name) ? 'Trait already added' : 'Add this trait to your character'}
+                            >
+                              {isTraitAlreadyAdded(trait.name) ? '✓ Added' : '+ Add'}
+                            </button>
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
                   {/if}
-                </div>
+                {/if}
               </div>
             {:else if apiData.type === 'background'}
               <div class="background-details">
@@ -1141,6 +1421,27 @@
           </div>
         {/if}
       </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Description Modal -->
+{#if showDescModal}
+  <div class="desc-modal-backdrop" 
+       onclick={() => showDescModal = false}
+       onkeydown={(e) => e.key === 'Escape' && (showDescModal = false)}
+       role="button" 
+       tabindex="-1"
+       aria-label="Close modal">
+    <div class="desc-modal" 
+         onclick={(e) => e.stopPropagation()}
+         onkeydown={(e) => e.stopPropagation()}
+         role="dialog"
+         tabindex="-1"
+         aria-labelledby="desc-modal-title">
+      <h4 id="desc-modal-title">Full Description</h4>
+      <pre class="desc-modal-content">{expandedText}</pre>
+      <button class="close-btn" onclick={() => showDescModal = false}>Close</button>
     </div>
   </div>
 {/if}
@@ -1235,6 +1536,54 @@
 
   .delete-btn:hover {
     background-color: #d32f2f;
+  }
+
+  .backup-buttons {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #ccc;
+  }
+
+  .export-btn, .import-btn, .info-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .export-btn {
+    background-color: #FF9800;
+    color: white;
+  }
+
+  .export-btn:hover {
+    background-color: #F57C00;
+  }
+
+  .import-btn {
+    background-color: #9C27B0;
+    color: white;
+  }
+
+  .import-btn:hover {
+    background-color: #7B1FA2;
+  }
+
+  .info-btn {
+    background-color: #607D8B;
+    color: white;
+  }
+
+  .info-btn:hover {
+    background-color: #455A64;
   }
 
   /* Save Dialog */
@@ -1969,6 +2318,78 @@
     transform: none;
   }
 
+  /* Racial Traits Styling */
+  .race-traits h4 {
+    margin: 0 0 1rem 0;
+    color: #333;
+    font-size: 1.2rem;
+  }
+
+  .traits-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-top: 1rem;
+  }
+
+  .trait-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+
+  .trait-card:hover {
+    border-color: #2196F3;
+    box-shadow: 0 2px 4px rgba(33, 150, 243, 0.2);
+  }
+
+  .trait-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .trait-description {
+    font-size: 0.9rem;
+    color: #666;
+    margin: 0.5rem 0 0 0;
+    line-height: 1.4;
+  }
+
+  .add-trait-btn {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    margin-left: 1rem;
+  }
+
+  .add-trait-btn:hover {
+    background-color: #1976D2;
+    transform: translateY(-1px);
+  }
+
+  .add-trait-btn.added {
+    background-color: #4CAF50;
+    cursor: default;
+  }
+
+  .add-trait-btn.added:hover {
+    background-color: #4CAF50;
+    transform: none;
+  }
+
   /* Dark mode */
   @media (prefers-color-scheme: dark) {
     .character-management {
@@ -2200,6 +2621,25 @@
       color: #ccc;
     }
 
+    /* Racial Traits Dark Mode */
+    .race-traits h4 {
+      color: #f6f6f6;
+    }
+
+    .trait-card {
+      background-color: #404040;
+      border-color: #666;
+    }
+
+    .trait-card:hover {
+      border-color: #64b5f6;
+      box-shadow: 0 2px 4px rgba(100, 181, 246, 0.2);
+    }
+
+    .trait-description {
+      color: #ccc;
+    }
+
     .lookup-btn.features {
       background-color: #FF5722;
     }
@@ -2224,5 +2664,117 @@
     .stat-modifier {
       color: #ccc;
     }
+
+    /* Show more buttons and modal dark mode */
+    .show-more-btn {
+      background-color: #64b5f6;
+    }
+
+    .show-more-btn:hover {
+      background-color: #42a5f5;
+    }
+
+    .desc-modal {
+      background: #2f2f2f;
+      color: #f6f6f6;
+      border-color: #555;
+    }
+
+    .desc-modal h4 {
+      color: #64b5f6;
+      border-bottom-color: #555;
+    }
+
+    .desc-modal-content {
+      background: #404040;
+      color: #f6f6f6;
+      border-color: #666;
+    }
+
+    .desc-modal .close-btn {
+      background-color: #4CAF50;
+    }
+
+    .desc-modal .close-btn:hover {
+      background-color: #45a049;
+    }
+  }
+
+  .expandable-description {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .show-more-btn {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    margin-left: 0.5rem;
+  }
+
+  .show-more-btn:hover {
+    background-color: #1976D2;
+    transform: translateY(-1px);
+  }
+  .desc-modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .desc-modal {
+    background: #fff;
+    color: #333;
+    padding: 2rem;
+    border-radius: 8px;
+    max-width: 600px;
+    width: 90vw;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    border: 2px solid #e0e0e0;
+  }
+
+  .desc-modal h4 {
+    margin: 0 0 1rem 0;
+    color: #2196F3;
+    font-size: 1.4rem;
+    text-align: center;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e0e0e0;
+  }
+  .desc-modal-content {
+    white-space: pre-wrap;
+    max-height: 50vh;
+    overflow-y: auto;
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    background: #f8f9fa;
+    color: #333;
+    padding: 1.2rem;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    font-family: inherit;
+  }
+  .desc-modal .close-btn {
+    align-self: flex-end;
+    padding: 0.5em 1.2em;
+    font-size: 1em;
+    border: none;
+    background: #4CAF50;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
   }
 </style>
