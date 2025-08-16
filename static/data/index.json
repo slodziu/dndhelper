@@ -37,6 +37,11 @@
       "description": "Small primates known for their pack hunting tactics and agility"
     },
     {
+      "name": "Bed Dragon Wyrmling",
+      "filename": "bed-dragon-wyrmling.json",
+      "description": "A medium-sized dragon wyrmling with wooden textures and bark-like scales, capable of breathing deadly wooden splinters"
+    },
+    {
       "name": "Black Bear",
       "filename": "black-bear.json",
       "description": "Powerful omnivorous mammals found in forests and mountains"
@@ -50,6 +55,11 @@
       "name": "Goblin Scout",
       "filename": "goblin-scout.json",
       "description": "A nimble goblin scout with stealth abilities"
+    },
+    {
+      "name": "Mastiff",
+      "filename": "mastiff.json",
+      "description": "A medium-sized canine with strong jaws and keen senses, often found guarding settlements or accompanying hunters"
     },
     {
       "name": "Young Red Dragon",

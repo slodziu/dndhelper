@@ -1,0 +1,46 @@
+{
+  "name": "Mastiff",
+  "size": "Medium",
+  "type": "beast",
+  "subtype": "",
+  "alignment": "unaligned",
+  "armor_class": 12,
+  "armor_desc": "",
+  "hit_points": 5,
+  "hit_dice": "1d8+1",
+  "speed": {
+    "walk": 40
+  },
+  "strength": 13,
+  "dexterity": 14,
+  "constitution": 12,
+  "intelligence": 3,
+  "wisdom": 12,
+  "charisma": 7,
+  "skills": {
+    "perception": 3
+  },
+  "senses": "passive Perception 13",
+  "languages": "",
+  "challenge_rating": "1/8",
+  "experience_points": 25,
+  "special_abilities": [
+    {
+      "name": "Keen Hearing and Smell",
+      "desc": "The mastiff has advantage on Wisdom (Perception) checks that rely on hearing or smell."
+    },
+    {
+      "name": "Pack Tactics",
+      "desc": "The mastiff has advantage on an attack roll against a creature if at least one of the mastiff's allies is within 5 ft. of the creature and the ally isn't incapacitated."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "desc": "Melee Weapon Attack: +3 to hit, reach 5 ft., one target. Hit: (1d6 + 1) piercing damage. If the target is a creature, it must succeed on a DC 11 Strength saving throw or be knocked prone."
+    }
+  ],
+  "legendary_actions": [],
+  "notes": "Loyal canines often used as guard dogs or hunting companions. Their pack tactics make them dangerous in groups.",
+  "description": "A medium-sized canine with strong jaws and keen senses, often found guarding settlements or accompanying hunters."
+}

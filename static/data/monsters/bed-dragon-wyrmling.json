@@ -1,0 +1,54 @@
+{
+  "name": "Bed Dragon Wyrmling",
+  "size": "Medium",
+  "type": "dragon",
+  "subtype": "",
+  "alignment": "chaotic neutral",
+  "armor_class": 16,
+  "armor_desc": "natural armor",
+  "hit_points": 16,
+  "hit_dice": "3d8+3",
+  "speed": {
+    "walk": 30,
+    "climb": 15,
+    "fly": 60
+  },
+  "strength": 15,
+  "dexterity": 10,
+  "constitution": 13,
+  "intelligence": 10,
+  "wisdom": 11,
+  "charisma": 13,
+  "saving_throws": {
+    "dexterity": 2,
+    "constitution": 3,
+    "wisdom": 2,
+    "charisma": 3
+  },
+  "skills": {
+    "perception": 4,
+    "stealth": 2
+  },
+  "damage_vulnerabilities": ["fire"],
+  "damage_resistances": [],
+  "damage_immunities": [],
+  "condition_immunities": [],
+  "senses": "blindsight 10 ft., darkvision 60 ft., passive Perception 14",
+  "languages": "Draconic",
+  "challenge_rating": "1",
+  "experience_points": 200,
+  "special_abilities": [],
+  "actions": [
+    {
+      "name": "Bite",
+      "desc": "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 7 (1d10 + 2) piercing damage."
+    },
+    {
+      "name": "Splinter Breath (Recharge 5-6)",
+      "desc": "The Bed Dragon Wyrmling sends out a shower of wooden splinters in a 15-foot cone. Each creature in that area must make a DC 11 Dexterity saving throw, taking 14 (4d6) piercing damage on a failed save, or half as much damage on a successful one."
+    }
+  ],
+  "legendary_actions": [],
+  "notes": "A young dragon with wooden features and the ability to breathe splinters. Despite its name, it's not particularly restful to encounter.",
+  "description": "A medium-sized dragon wyrmling with wooden textures and bark-like scales, capable of breathing deadly wooden splinters."
+}

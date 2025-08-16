@@ -688,8 +688,212 @@
                         </div>
                     {:else if selectedEntity.type === 'monster'}
                         <div class="monster-details">
-                            <p>{selectedEntity.description}</p>
-                            <!-- Add more monster details here if available -->
+                            <!-- Monster Header -->
+                            <div class="monster-header">
+                                <div class="monster-basic">
+                                    <div class="detail-row">
+                                        <strong>Size:</strong> {selectedEntity.size} {selectedEntity.type}{selectedEntity.subtype ? `, ${selectedEntity.subtype}` : ''}
+                                    </div>
+                                    <div class="detail-row">
+                                        <strong>Alignment:</strong> {selectedEntity.alignment}
+                                    </div>
+                                </div>
+                                
+                                <!-- Combat Stats -->
+                                <div class="combat-stats">
+                                    <div class="stat-box">
+                                        <strong>AC</strong>
+                                        <span class="stat-value">{selectedEntity.armor_class}</span>
+                                        {#if selectedEntity.armor_desc}
+                                            <span class="stat-detail">({selectedEntity.armor_desc})</span>
+                                        {/if}
+                                    </div>
+                                    <div class="stat-box">
+                                        <strong>HP</strong>
+                                        <span class="stat-value">{selectedEntity.hit_points}</span>
+                                        {#if selectedEntity.hit_dice}
+                                            <span class="stat-detail">({selectedEntity.hit_dice})</span>
+                                        {/if}
+                                    </div>
+                                    <div class="stat-box">
+                                        <strong>CR</strong>
+                                        <span class="stat-value">{selectedEntity.challenge_rating}</span>
+                                        <span class="stat-detail">({selectedEntity.experience_points} XP)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Speed -->
+                            {#if selectedEntity.speed}
+                                <div class="monster-section">
+                                    <strong>Speed:</strong>
+                                    <span>
+                                        {#if selectedEntity.speed.walk}Walk {selectedEntity.speed.walk} ft.{/if}
+                                        {#if selectedEntity.speed.climb}, Climb {selectedEntity.speed.climb} ft.{/if}
+                                        {#if selectedEntity.speed.fly}, Fly {selectedEntity.speed.fly} ft.{/if}
+                                        {#if selectedEntity.speed.swim}, Swim {selectedEntity.speed.swim} ft.{/if}
+                                        {#if selectedEntity.speed.burrow}, Burrow {selectedEntity.speed.burrow} ft.{/if}
+                                    </span>
+                                </div>
+                            {/if}
+
+                            <!-- Ability Scores -->
+                            <div class="ability-scores">
+                                <h4>Ability Scores</h4>
+                                <div class="stats-grid">
+                                    <div class="ability-score">
+                                        <strong>STR</strong>
+                                        <span class="score">{selectedEntity.strength}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.strength - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.strength - 10) / 2)})</span>
+                                    </div>
+                                    <div class="ability-score">
+                                        <strong>DEX</strong>
+                                        <span class="score">{selectedEntity.dexterity}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.dexterity - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.dexterity - 10) / 2)})</span>
+                                    </div>
+                                    <div class="ability-score">
+                                        <strong>CON</strong>
+                                        <span class="score">{selectedEntity.constitution}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.constitution - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.constitution - 10) / 2)})</span>
+                                    </div>
+                                    <div class="ability-score">
+                                        <strong>INT</strong>
+                                        <span class="score">{selectedEntity.intelligence}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.intelligence - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.intelligence - 10) / 2)})</span>
+                                    </div>
+                                    <div class="ability-score">
+                                        <strong>WIS</strong>
+                                        <span class="score">{selectedEntity.wisdom}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.wisdom - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.wisdom - 10) / 2)})</span>
+                                    </div>
+                                    <div class="ability-score">
+                                        <strong>CHA</strong>
+                                        <span class="score">{selectedEntity.charisma}</span>
+                                        <span class="modifier">({Math.floor((selectedEntity.charisma - 10) / 2) >= 0 ? '+' : ''}{Math.floor((selectedEntity.charisma - 10) / 2)})</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Saving Throws -->
+                            {#if selectedEntity.saving_throws && Object.keys(selectedEntity.saving_throws).length > 0}
+                                <div class="monster-section">
+                                    <strong>Saving Throws:</strong>
+                                    <span>
+                                        {#each Object.entries(selectedEntity.saving_throws) as [ability, bonus], index}
+                                            {ability.charAt(0).toUpperCase() + ability.slice(1)} +{bonus}{index < Object.entries(selectedEntity.saving_throws).length - 1 ? ', ' : ''}
+                                        {/each}
+                                    </span>
+                                </div>
+                            {/if}
+
+                            <!-- Skills -->
+                            {#if selectedEntity.skills && Object.keys(selectedEntity.skills).length > 0}
+                                <div class="monster-section">
+                                    <strong>Skills:</strong>
+                                    <span>
+                                        {#each Object.entries(selectedEntity.skills) as [skill, bonus], index}
+                                            {skill.charAt(0).toUpperCase() + skill.slice(1)} +{bonus}{index < Object.entries(selectedEntity.skills).length - 1 ? ', ' : ''}
+                                        {/each}
+                                    </span>
+                                </div>
+                            {/if}
+
+                            <!-- Damage Immunities/Resistances/Vulnerabilities -->
+                            {#if selectedEntity.damage_immunities && selectedEntity.damage_immunities.length > 0}
+                                <div class="monster-section">
+                                    <strong>Damage Immunities:</strong>
+                                    <span>{selectedEntity.damage_immunities.join(', ')}</span>
+                                </div>
+                            {/if}
+                            {#if selectedEntity.damage_resistances && selectedEntity.damage_resistances.length > 0}
+                                <div class="monster-section">
+                                    <strong>Damage Resistances:</strong>
+                                    <span>{selectedEntity.damage_resistances.join(', ')}</span>
+                                </div>
+                            {/if}
+                            {#if selectedEntity.damage_vulnerabilities && selectedEntity.damage_vulnerabilities.length > 0}
+                                <div class="monster-section">
+                                    <strong>Damage Vulnerabilities:</strong>
+                                    <span>{selectedEntity.damage_vulnerabilities.join(', ')}</span>
+                                </div>
+                            {/if}
+
+                            <!-- Condition Immunities -->
+                            {#if selectedEntity.condition_immunities && selectedEntity.condition_immunities.length > 0}
+                                <div class="monster-section">
+                                    <strong>Condition Immunities:</strong>
+                                    <span>{selectedEntity.condition_immunities.join(', ')}</span>
+                                </div>
+                            {/if}
+
+                            <!-- Senses -->
+                            {#if selectedEntity.senses}
+                                <div class="monster-section">
+                                    <strong>Senses:</strong>
+                                    <span>{selectedEntity.senses}</span>
+                                </div>
+                            {/if}
+
+                            <!-- Languages -->
+                            {#if selectedEntity.languages}
+                                <div class="monster-section">
+                                    <strong>Languages:</strong>
+                                    <span>{selectedEntity.languages || '—'}</span>
+                                </div>
+                            {/if}
+
+                            <!-- Special Abilities -->
+                            {#if selectedEntity.special_abilities && selectedEntity.special_abilities.length > 0}
+                                <div class="features-section">
+                                    <h4>Special Abilities</h4>
+                                    <div class="features-list">
+                                        {#each selectedEntity.special_abilities as ability}
+                                            <div class="feature-item">
+                                                <strong>{ability.name}.</strong>
+                                                <span class="feature-desc">{ability.desc}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Actions -->
+                            {#if selectedEntity.actions && selectedEntity.actions.length > 0}
+                                <div class="features-section">
+                                    <h4>Actions</h4>
+                                    <div class="features-list">
+                                        {#each selectedEntity.actions as action}
+                                            <div class="feature-item action-item">
+                                                <strong>{action.name}.</strong>
+                                                <span class="feature-desc">{action.desc}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Legendary Actions -->
+                            {#if selectedEntity.legendary_actions && selectedEntity.legendary_actions.length > 0}
+                                <div class="features-section">
+                                    <h4>Legendary Actions</h4>
+                                    <div class="features-list">
+                                        {#each selectedEntity.legendary_actions as action}
+                                            <div class="feature-item legendary-item">
+                                                <strong>{action.name}.</strong>
+                                                <span class="feature-desc">{action.desc}</span>
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
+                            <!-- Description/Notes -->
+                            {#if selectedEntity.description || selectedEntity.notes}
+                                <div class="features-section">
+                                    <h4>Description</h4>
+                                    <p class="notes">{selectedEntity.description || selectedEntity.notes}</p>
+                                </div>
+                            {/if}
                         </div>
                     {:else if selectedEntity.type === 'manual'}
                         <div class="manual-entry-details">
@@ -1463,7 +1667,7 @@
         gap: 1.5rem;
     }
 
-    .character-header {
+    .character-header, .monster-header {
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 2rem;
@@ -1473,10 +1677,35 @@
         border: 1px solid #e0e0e0;
     }
 
-    .character-basic {
+    .character-basic, .monster-basic {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+    }
+
+    /* Monster-specific sections */
+    .monster-section {
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+        border-left: 3px solid #FF5722;
+        margin-bottom: 0.5rem;
+    }
+
+    .monster-section strong {
+        color: #333;
+        margin-right: 0.5rem;
+    }
+
+    .monster-section span {
+        color: #666;
+    }
+
+    .stat-detail {
+        font-size: 0.8rem;
+        color: #888;
+        display: block;
+        margin-top: 0.2rem;
     }
 
     .combat-stats {
@@ -1567,6 +1796,16 @@
         background: #f8f9fa;
         border-radius: 4px;
         border-left: 3px solid #2196F3;
+    }
+
+    .action-item {
+        border-left-color: #FF5722;
+        background: #fff3e0;
+    }
+
+    .legendary-item {
+        border-left-color: #9C27B0;
+        background: #f3e5f5;
     }
 
     .feature-desc {
@@ -1673,7 +1912,7 @@
     }
 
     @media (max-width: 768px) {
-        .character-header {
+        .character-header, .monster-header {
             grid-template-columns: 1fr;
             gap: 1rem;
         }
@@ -1731,6 +1970,38 @@
         .character-header {
             background: #404040;
             border-color: #666;
+        }
+
+        .monster-header {
+            background: #404040;
+            border-color: #666;
+        }
+
+        .monster-section {
+            background: #404040;
+            border-left-color: #FF5722;
+        }
+
+        .monster-section strong {
+            color: #f6f6f6;
+        }
+
+        .monster-section span {
+            color: #ccc;
+        }
+
+        .stat-detail {
+            color: #aaa;
+        }
+
+        .action-item {
+            background: #4a3428;
+            border-left-color: #FF5722;
+        }
+
+        .legendary-item {
+            background: #3d2a3d;
+            border-left-color: #9C27B0;
         }
 
         .stat-box {
