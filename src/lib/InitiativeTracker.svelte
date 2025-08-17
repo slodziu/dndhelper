@@ -20,6 +20,8 @@
     let monsters = $state([]);
     let selectedEntity = $state(null);
     let showEntityModal = $state(false);
+    let selectedSpell = $state(null);
+    let showSpellModal = $state(false);
 
     function addEntry() {
         const trimmedName = name.trim();
@@ -53,7 +55,29 @@
             // Load monsters from static data
             const monstersResponse = await fetch('/data/index.json');
             const data = await monstersResponse.json();
-            monsters = data.monsters || [];
+            const monsterIndex = data.monsters || [];
+            
+            // Load full monster data for each monster
+            monsters = [];
+            for (const monsterInfo of monsterIndex) {
+                try {
+                    const monsterResponse = await fetch(`/data/monsters/${monsterInfo.filename}`);
+                    const monsterData = await monsterResponse.json();
+                    // Add the description from index if not present in monster data
+                    if (!monsterData.description && monsterInfo.description) {
+                        monsterData.description = monsterInfo.description;
+                    }
+                    // Preserve the creature type under a different name to avoid conflicts
+                    if (monsterData.type) {
+                        monsterData.creature_type = monsterData.type;
+                    }
+                    monsters.push(monsterData);
+                } catch (monsterError) {
+                    console.error(`Failed to load monster ${monsterInfo.name}:`, monsterError);
+                    // Fallback to basic info if full data fails to load
+                    monsters.push(monsterInfo);
+                }
+            }
         } catch (error) {
             console.error('Error loading entities:', error);
         }
@@ -112,6 +136,14 @@
             };
             showEntityModal = true;
         }
+    }
+
+    /**
+     * Show spell details in modal
+     */
+    function showSpellDetails(spell) {
+        selectedSpell = spell;
+        showSpellModal = true;
     }
 
     /**
@@ -509,7 +541,21 @@
                                     <div class="entity-card monster">
                                         <div class="entity-info">
                                             <strong>{monster.name}</strong>
-                                            <span>{monster.description}</span>
+                                            <div class="monster-stats">
+                                                <span>CR {monster.challenge_rating}</span>
+                                                {#if monster.size && (monster.creature_type || monster.type)}
+                                                    <span>• {monster.size} {monster.creature_type || monster.type}</span>
+                                                {/if}
+                                                {#if monster.armor_class}
+                                                    <span>• AC {monster.armor_class}</span>
+                                                {/if}
+                                                {#if monster.hit_points}
+                                                    <span>• HP {monster.hit_points}</span>
+                                                {/if}
+                                            </div>
+                                            {#if monster.description}
+                                                <span class="monster-desc">{monster.description}</span>
+                                            {/if}
                                         </div>
                                         <button onclick={() => addEntityToInitiative(monster, 'monster')} class="add-btn">Add</button>
                                     </div>
@@ -628,6 +674,89 @@
                                 </div>
                             {/if}
 
+                            <!-- Weapons & Combat -->
+                            {#if selectedEntity.items && selectedEntity.items.length > 0}
+                                {@const weapons = selectedEntity.items.filter(item => {
+                                    if (!item.name) return false;
+                                    const name = item.name.toLowerCase();
+                                    const desc = item.description?.toLowerCase() || '';
+                                    
+                                    // Common weapon names
+                                    const weaponNames = [
+                                        'sword', 'blade', 'bow', 'crossbow', 'dagger', 'knife', 'axe', 'hatchet',
+                                        'mace', 'hammer', 'spear', 'lance', 'javelin', 'staff', 'wand', 'rod',
+                                        'scimitar', 'rapier', 'cutlass', 'club', 'sling', 'dart', 'net', 'whip',
+                                        'flail', 'glaive', 'halberd', 'pike', 'trident', 'warhammer', 'maul',
+                                        'shortbow', 'longbow', 'handaxe', 'battleaxe', 'greataxe', 'greatsword',
+                                        'shortsword', 'longsword', 'scimitar', 'handgun', 'pistol', 'musket'
+                                    ];
+                                    
+                                    // Check if name contains weapon words
+                                    const hasWeaponName = weaponNames.some(weapon => name.includes(weapon));
+                                    
+                                    // Check description for weapon-related terms
+                                    const weaponTerms = ['weapon', 'attack', 'damage', 'hit', 'pierce', 'slash', 'bludgeon', 'ranged', 'melee'];
+                                    const hasWeaponDesc = weaponTerms.some(term => desc.includes(term));
+                                    
+                                    return hasWeaponName || hasWeaponDesc;
+                                })}
+                                {#if weapons.length > 0}
+                                    <div class="features-section">
+                                        <h4>⚔️ Weapons & Combat</h4>
+                                        <div class="weapons-list">
+                                            {#each weapons as weapon}
+                                                <div class="weapon-item">
+                                                    <div class="weapon-header">
+                                                        <strong>{weapon.name}</strong>
+                                                        {#if weapon.quantity > 1}
+                                                            <span class="quantity">x{weapon.quantity}</span>
+                                                        {/if}
+                                                    </div>
+                                                    {#if weapon.description}
+                                                        <p class="weapon-desc">{weapon.description}</p>
+                                                    {/if}
+                                                </div>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                {/if}
+                            {/if}
+
+                            <!-- Spells -->
+                            {#if selectedEntity.spells && selectedEntity.spells.length > 0}
+                                <div class="features-section">
+                                    <h4>✨ Spells</h4>
+                                    <div class="spells-list">
+                                        {#each selectedEntity.spells as spell}
+                                            <div class="spell-item" 
+                                                 class:clickable={spell.description && spell.description.length > 150}
+                                                 onclick={() => spell.description && spell.description.length > 150 && showSpellDetails(spell)}
+                                                 onkeydown={(e) => e.key === 'Enter' && spell.description && spell.description.length > 150 && showSpellDetails(spell)}
+                                                 role={spell.description && spell.description.length > 150 ? "button" : undefined}
+                                                 tabindex={spell.description && spell.description.length > 150 ? "0" : undefined}>
+                                                <div class="spell-header">
+                                                    <strong>{spell.name}</strong>
+                                                    {#if spell.level !== undefined}
+                                                        <span class="spell-level">Level {spell.level}</span>
+                                                    {/if}
+                                                    {#if spell.school}
+                                                        <span class="spell-school">{spell.school}</span>
+                                                    {/if}
+                                                    {#if spell.description && spell.description.length > 150}
+                                                        <span class="expand-indicator">🔍 Click for details</span>
+                                                    {/if}
+                                                </div>
+                                                {#if spell.description}
+                                                    <p class="spell-desc">
+                                                        {spell.description.length > 150 ? spell.description.substring(0, 150) + '...' : spell.description}
+                                                    </p>
+                                                {/if}
+                                            </div>
+                                        {/each}
+                                    </div>
+                                </div>
+                            {/if}
+
                             <!-- Features -->
                             {#if selectedEntity.class_features && selectedEntity.class_features.length > 0}
                                 <div class="features-section">
@@ -661,21 +790,44 @@
                                 </div>
                             {/if}
 
-                            <!-- Items -->
+                            <!-- Items & Equipment -->
                             {#if selectedEntity.items && selectedEntity.items.length > 0}
-                                <div class="features-section">
-                                    <h4>Items</h4>
-                                    <div class="items-list">
-                                        {#each selectedEntity.items as item}
-                                            <div class="item">
-                                                <strong>{item.name}</strong>
-                                                {#if item.quantity > 1}
-                                                    <span class="quantity">x{item.quantity}</span>
-                                                {/if}
-                                            </div>
-                                        {/each}
+                                {@const nonWeaponItems = selectedEntity.items.filter(item => {
+                                    if (!item.name) return true;
+                                    const name = item.name.toLowerCase();
+                                    const desc = item.description?.toLowerCase() || '';
+                                    
+                                    // Common weapon names (same as above)
+                                    const weaponNames = [
+                                        'sword', 'blade', 'bow', 'crossbow', 'dagger', 'knife', 'axe', 'hatchet',
+                                        'mace', 'hammer', 'spear', 'lance', 'javelin', 'staff', 'wand', 'rod',
+                                        'scimitar', 'rapier', 'cutlass', 'club', 'sling', 'dart', 'net', 'whip',
+                                        'flail', 'glaive', 'halberd', 'pike', 'trident', 'warhammer', 'maul',
+                                        'shortbow', 'longbow', 'handaxe', 'battleaxe', 'greataxe', 'greatsword',
+                                        'shortsword', 'longsword', 'scimitar', 'handgun', 'pistol', 'musket'
+                                    ];
+                                    
+                                    const hasWeaponName = weaponNames.some(weapon => name.includes(weapon));
+                                    const weaponTerms = ['weapon', 'attack', 'damage', 'hit', 'pierce', 'slash', 'bludgeon', 'ranged', 'melee'];
+                                    const hasWeaponDesc = weaponTerms.some(term => desc.includes(term));
+                                    
+                                    return !(hasWeaponName || hasWeaponDesc);
+                                })}
+                                {#if nonWeaponItems.length > 0}
+                                    <div class="features-section">
+                                        <h4>🎒 Items & Equipment</h4>
+                                        <div class="items-list">
+                                            {#each nonWeaponItems as item}
+                                                <div class="item">
+                                                    <strong>{item.name}</strong>
+                                                    {#if item.quantity > 1}
+                                                        <span class="quantity">x{item.quantity}</span>
+                                                    {/if}
+                                                </div>
+                                            {/each}
+                                        </div>
                                     </div>
-                                </div>
+                                {/if}
                             {/if}
 
                             <!-- Notes -->
@@ -692,7 +844,7 @@
                             <div class="monster-header">
                                 <div class="monster-basic">
                                     <div class="detail-row">
-                                        <strong>Size:</strong> {selectedEntity.size} {selectedEntity.type}{selectedEntity.subtype ? `, ${selectedEntity.subtype}` : ''}
+                                        <strong>Size:</strong> {selectedEntity.size} {selectedEntity.creature_type || selectedEntity.monsterType || 'creature'}{selectedEntity.subtype ? `, ${selectedEntity.subtype}` : ''}
                                     </div>
                                     <div class="detail-row">
                                         <strong>Alignment:</strong> {selectedEntity.alignment}
@@ -909,6 +1061,74 @@
                             </div>
                         </div>
                     {/if}
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Spell Details Modal -->
+    {#if showSpellModal && selectedSpell}
+        <div class="modal-backdrop" 
+             onclick={() => showSpellModal = false}
+             onkeydown={(e) => e.key === 'Escape' && (showSpellModal = false)}
+             role="button"
+             tabindex="-1">
+            <div class="modal spell-details" 
+                 onclick={(e) => e.stopPropagation()}
+                 onkeydown={(e) => e.stopPropagation()}
+                 role="dialog"
+                 tabindex="-1">
+                <div class="modal-header">
+                    <h3>✨ {selectedSpell.name}</h3>
+                    <button onclick={() => showSpellModal = false} class="close-btn">×</button>
+                </div>
+                <div class="modal-content">
+                    <div class="spell-full-details">
+                        <div class="spell-meta">
+                            {#if selectedSpell.level !== undefined}
+                                <div class="spell-detail-item">
+                                    <strong>Level:</strong> {selectedSpell.level === 0 ? 'Cantrip' : selectedSpell.level}
+                                </div>
+                            {/if}
+                            {#if selectedSpell.school}
+                                <div class="spell-detail-item">
+                                    <strong>School:</strong> {selectedSpell.school}
+                                </div>
+                            {/if}
+                            {#if selectedSpell.casting_time}
+                                <div class="spell-detail-item">
+                                    <strong>Casting Time:</strong> {selectedSpell.casting_time}
+                                </div>
+                            {/if}
+                            {#if selectedSpell.range}
+                                <div class="spell-detail-item">
+                                    <strong>Range:</strong> {selectedSpell.range}
+                                </div>
+                            {/if}
+                            {#if selectedSpell.components}
+                                <div class="spell-detail-item">
+                                    <strong>Components:</strong> {selectedSpell.components}
+                                </div>
+                            {/if}
+                            {#if selectedSpell.duration}
+                                <div class="spell-detail-item">
+                                    <strong>Duration:</strong> {selectedSpell.duration}
+                                </div>
+                            {/if}
+                        </div>
+                        {#if selectedSpell.description}
+                            <div class="spell-description">
+                                <h4>Description</h4>
+                                <p>{selectedSpell.description}</p>
+                            </div>
+                        {/if}
+                        {#if selectedSpell.higher_level}
+                            <div class="spell-higher-level">
+                                <h4>At Higher Levels</h4>
+                                <p>{selectedSpell.higher_level}</p>
+                            </div>
+                        {/if}
+                    </div>
                 </div>
             </div>
         </div>
@@ -1640,6 +1860,23 @@
         color: #666;
     }
 
+    .monster-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.5rem 0;
+        font-size: 0.8rem;
+        color: #888;
+    }
+
+    .monster-desc {
+        color: #666;
+        font-size: 0.85rem;
+        font-style: italic;
+        margin-top: 0.5rem;
+        line-height: 1.3;
+    }
+
     .add-btn {
         background-color: #4CAF50;
         color: white;
@@ -1815,6 +2052,155 @@
         line-height: 1.4;
     }
 
+    /* Weapons Section */
+    .weapons-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .weapon-item {
+        padding: 0.75rem;
+        background: #fff3e0;
+        border-radius: 4px;
+        border-left: 3px solid #FF5722;
+    }
+
+    .weapon-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .weapon-desc {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+        line-height: 1.4;
+    }
+
+    /* Spells Section */
+    .spells-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .spell-item {
+        padding: 0.75rem;
+        background: #f3e5f5;
+        border-radius: 4px;
+        border-left: 3px solid #9C27B0;
+        transition: all 0.2s ease;
+    }
+
+    .spell-item.clickable {
+        cursor: pointer;
+    }
+
+    .spell-item.clickable:hover {
+        background: #e8d5ea;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .spell-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .spell-level {
+        background: #9C27B0;
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+
+    .spell-school {
+        background: #e1bee7;
+        color: #4a148c;
+        padding: 0.1rem 0.4rem;
+        border-radius: 10px;
+        font-size: 0.75rem;
+        font-weight: bold;
+    }
+
+    .expand-indicator {
+        background: #ffc107;
+        color: #333;
+        padding: 0.1rem 0.4rem;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: bold;
+        margin-left: auto;
+    }
+
+    .spell-desc {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #666;
+        line-height: 1.4;
+    }
+
+    /* Spell Details Modal */
+    .spell-details {
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .spell-full-details {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .spell-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.5rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid #9C27B0;
+    }
+
+    .spell-detail-item {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .spell-detail-item strong {
+        color: #333;
+        min-width: fit-content;
+    }
+
+    .spell-description, .spell-higher-level {
+        padding: 1rem;
+        background: #f3e5f5;
+        border-radius: 6px;
+        border-left: 3px solid #9C27B0;
+    }
+
+    .spell-description h4, .spell-higher-level h4 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+        font-size: 1rem;
+    }
+
+    .spell-description p, .spell-higher-level p {
+        margin: 0;
+        line-height: 1.6;
+        color: #444;
+        white-space: pre-wrap;
+    }
+
     .items-list {
         display: flex;
         flex-wrap: wrap;
@@ -1959,6 +2345,14 @@
             color: #ccc;
         }
 
+        .monster-stats {
+            color: #aaa;
+        }
+
+        .monster-desc {
+            color: #ccc;
+        }
+
         .detail-row {
             background: #404040;
         }
@@ -2053,6 +2447,64 @@
         }
 
         .feature-desc {
+            color: #ccc;
+        }
+
+        .weapon-item {
+            background: #4a3428;
+            border-left-color: #FF5722;
+        }
+
+        .weapon-desc {
+            color: #ccc;
+        }
+
+        .spell-item {
+            background: #3d2a3d;
+            border-left-color: #9C27B0;
+        }
+
+        .spell-item.clickable:hover {
+            background: #4a2e4a;
+        }
+
+        .spell-desc {
+            color: #ccc;
+        }
+
+        .spell-level {
+            background: #9C27B0;
+        }
+
+        .spell-school {
+            background: #6a1b9a;
+            color: #e1bee7;
+        }
+
+        .expand-indicator {
+            background: #ff8f00;
+            color: #000;
+        }
+
+        .spell-meta {
+            background: #404040;
+            border-left-color: #9C27B0;
+        }
+
+        .spell-detail-item strong {
+            color: #f6f6f6;
+        }
+
+        .spell-description, .spell-higher-level {
+            background: #3d2a3d;
+            border-left-color: #9C27B0;
+        }
+
+        .spell-description h4, .spell-higher-level h4 {
+            color: #f6f6f6;
+        }
+
+        .spell-description p, .spell-higher-level p {
             color: #ccc;
         }
 
