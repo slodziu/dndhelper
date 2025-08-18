@@ -1,7 +1,7 @@
 <script>
     // @ts-nocheck
     import { onMount } from 'svelte';
-    import { loadCharacters } from './characterStorage.js';
+    import { loadCharacters, saveCharacter } from './characterStorage.js';
     
     let name = $state('');
     let initiative = $state('');
@@ -22,6 +22,7 @@
     let showEntityModal = $state(false);
     let selectedSpell = $state(null);
     let showSpellModal = $state(false);
+    let saveStatus = $state({ show: false, message: '', type: 'success' });
 
     function addEntry() {
         const trimmedName = name.trim();
@@ -30,7 +31,14 @@
         console.log('Adding entry:', { trimmedName, initiative, initiativeValue, isNaN: isNaN(initiativeValue) });
         
         if (trimmedName && !isNaN(initiativeValue) && initiativeValue >= 0) {
-            const newEntry = { name: trimmedName, initiative: initiativeValue, isActive: false, type: 'manual' };
+            const newEntry = { 
+                name: trimmedName, 
+                initiative: initiativeValue, 
+                isActive: false, 
+                type: 'manual',
+                currentHP: 0,
+                maxHP: 0
+            };
             entries = [...entries, newEntry].sort((a, b) => b.initiative - a.initiative);
             console.log('Entries after add:', entries);
             name = '';
@@ -98,12 +106,45 @@
             initiativeValue = Math.floor(Math.random() * 20) + 1;
         }
         
+        // Get HP data based on entity type
+        let currentHP, maxHP;
+        if (entityType === 'character') {
+            // For characters, get current and max HP from character data
+            if (entity.data && entity.data.hitPoints) {
+                currentHP = entity.data.hitPoints.current || entity.data.hitPoints.maximum || 0;
+                maxHP = entity.data.hitPoints.maximum || 0;
+            } else if (entity.hitPoints) {
+                currentHP = entity.hitPoints.current || entity.hitPoints.maximum || 0;
+                maxHP = entity.hitPoints.maximum || 0;
+            } else {
+                // Initialize HP for characters without HP data
+                currentHP = 0;
+                maxHP = 0;
+                // Ensure the character data has hitPoints structure
+                if (entity.data) {
+                    entity.data.hitPoints = { current: currentHP, maximum: maxHP };
+                } else {
+                    entity.hitPoints = { current: currentHP, maximum: maxHP };
+                }
+            }
+        } else if (entityType === 'monster') {
+            // For monsters, use hit_points as both current and max
+            currentHP = entity.hit_points || 0;
+            maxHP = entity.hit_points || 0;
+        } else {
+            // Manual entries default to 0
+            currentHP = 0;
+            maxHP = 0;
+        }
+        
         const newEntry = {
             name: entity.name,
             initiative: initiativeValue,
             isActive: false,
             type: entityType,
-            data: entity
+            data: entity,
+            currentHP: currentHP,
+            maxHP: maxHP
         };
         
         entries = [...entries, newEntry].sort((a, b) => b.initiative - a.initiative);
@@ -383,14 +424,165 @@
     function handleDiceKeydown(e) {
         if (e.key === 'Enter') rollMiniDice();
     }
+
+    /**
+     * Update HP for an entry
+     */
+    function updateHP(index, newCurrentHP, newMaxHP = null) {
+        if (index < 0 || index >= entries.length) return;
+        
+        const entry = entries[index];
+        const oldCurrentHP = entry.currentHP;
+        const oldMaxHP = entry.maxHP;
+        
+        entry.currentHP = Math.max(0, newCurrentHP);
+        if (newMaxHP !== null) {
+            entry.maxHP = Math.max(0, newMaxHP);
+            // Ensure current HP doesn't exceed max HP
+            entry.currentHP = Math.min(entry.currentHP, entry.maxHP);
+        }
+        
+        // Update character sheet data if this is a character
+        if (entry.type === 'character' && entry.data) {
+            updateCharacterHP(entry, oldCurrentHP, oldMaxHP);
+        }
+        
+        // Trigger reactivity
+        entries = [...entries];
+    }
+
+    /**
+     * Update character HP in the actual character data and save to storage
+     */
+    async function updateCharacterHP(entry, oldCurrentHP, oldMaxHP) {
+        try {
+            let characterData;
+            
+            // Handle nested character data structure
+            if (entry.data.data) {
+                // Character from storage - data is nested in entry.data.data
+                characterData = entry.data.data;
+            } else {
+                // Direct character data
+                characterData = entry.data;
+            }
+            
+            // Ensure hitPoints object exists
+            if (!characterData.hitPoints) {
+                characterData.hitPoints = { current: 0, maximum: 0 };
+            }
+            
+            // Update the character's HP data
+            characterData.hitPoints.current = entry.currentHP;
+            characterData.hitPoints.maximum = entry.maxHP;
+            
+            // Save the updated character back to storage
+            await saveCharacter(characterData);
+            
+            console.log(`Updated HP for ${entry.name}: ${entry.currentHP}/${entry.maxHP}`);
+            
+            // Show success feedback
+            showSaveStatus(`${entry.name} HP saved`, 'success');
+            
+        } catch (error) {
+            console.error(`Failed to update character HP for ${entry.name}:`, error);
+            // Show error feedback
+            showSaveStatus(`Failed to save ${entry.name} HP`, 'error');
+        }
+    }
+
+    /**
+     * Refresh character HP from storage for all character entries
+     */
+    async function refreshCharacterHP() {
+        try {
+            const characters = await loadCharacters();
+            let updated = false;
+            
+            entries = entries.map(entry => {
+                if (entry.type === 'character' && entry.data) {
+                    // Find the matching character in storage
+                    const characterName = entry.data.name || (entry.data.data && entry.data.data.name);
+                    const updatedChar = characters.find(char => char.name === characterName);
+                    
+                    if (updatedChar && updatedChar.hitPoints) {
+                        const newCurrentHP = updatedChar.hitPoints.current || 0;
+                        const newMaxHP = updatedChar.hitPoints.maximum || 0;
+                        
+                        if (entry.currentHP !== newCurrentHP || entry.maxHP !== newMaxHP) {
+                            entry.currentHP = newCurrentHP;
+                            entry.maxHP = newMaxHP;
+                            
+                            // Update the data reference too
+                            if (entry.data.data) {
+                                entry.data.data.hitPoints = updatedChar.hitPoints;
+                            } else {
+                                entry.data.hitPoints = updatedChar.hitPoints;
+                            }
+                            
+                            updated = true;
+                        }
+                    }
+                }
+                return entry;
+            });
+            
+            if (updated) {
+                showSaveStatus('Character HP refreshed', 'success');
+            }
+            
+        } catch (error) {
+            console.error('Failed to refresh character HP:', error);
+            showSaveStatus('Failed to refresh HP', 'error');
+        }
+    }
+
+    /**
+     * Show save status feedback
+     */
+    function showSaveStatus(message, type = 'success') {
+        saveStatus = { show: true, message, type };
+        setTimeout(() => {
+            saveStatus = { show: false, message: '', type: 'success' };
+        }, 3000);
+    }
+
+    /**
+     * Adjust HP by a delta amount
+     */
+    function adjustHP(index, delta) {
+        if (index < 0 || index >= entries.length) return;
+        
+        const newHP = entries[index].currentHP + delta;
+        updateHP(index, newHP);
+    }
+
+    /**
+     * Handle HP input change
+     */
+    function handleHPInput(index, event, isMaxHP = false) {
+        const value = parseInt(event.target.value) || 0;
+        if (isMaxHP) {
+            updateHP(index, entries[index].currentHP, value);
+        } else {
+            updateHP(index, value);
+        }
+    }
 </script>
 
 <div class="initiative-tracker">
     <div class="tracker-header">
         <h3>Initiative Tracker</h3>
-        <button onclick={toggleMiniDiceRoller} class="dice-btn" title="Quick Dice Roller">
-            🎲
-        </button>
+        <div class="header-actions">
+            {#if saveStatus.show}
+                <div class="save-status {saveStatus.type}">
+                    {saveStatus.message}
+                </div>
+            {/if}
+            <button onclick={toggleMiniDiceRoller} class="dice-btn" title="Quick Dice Roller">
+                🎲
+            </button>
+        </div>
     </div>
 
     <!-- Mini Dice Roller -->
@@ -431,6 +623,9 @@
         />
         <button onclick={addEntry}>Add</button>
         <button onclick={openLookupModal} class="lookup-btn" title="Add from saved characters or monsters">📚 Lookup</button>
+        {#if entries.some(entry => entry.type === 'character')}
+            <button onclick={refreshCharacterHP} class="refresh-btn" title="Refresh character HP from saved data">🔄 Sync HP</button>
+        {/if}
         {#if entries.length > 0}
             <button onclick={clearAll} class="clear-btn">Clear All</button>
         {/if}
@@ -453,21 +648,32 @@
 
             <div class="character-track">
                 {#each entries as entry, index}
-                    <div 
-                        class="character-circle {entry.isActive ? 'active' : ''} {entry.type || 'manual'}" 
-                        title="{entry.name} (Initiative: {entry.initiative}) - Click for details"
-                        onclick={() => showEntityDetails(entry)}
-                        onkeydown={(e) => e.key === 'Enter' && showEntityDetails(entry)}
-                        role="button"
-                        tabindex="0"
-                    >
-                        <span class="initials">{getInitials(entry.name)}</span>
-                        <div class="initiative-badge">{entry.initiative}</div>
-                        {#if entry.type === 'character'}
-                            <div class="type-indicator">👤</div>
-                        {:else if entry.type === 'monster'}
-                            <div class="type-indicator">👹</div>
-                        {/if}
+                    <div class="character-container">
+                        <div 
+                            class="character-circle {entry.isActive ? 'active' : ''} {entry.type || 'manual'}" 
+                            title="{entry.name} (Initiative: {entry.initiative}) - Click for details"
+                            onclick={() => showEntityDetails(entry)}
+                            onkeydown={(e) => e.key === 'Enter' && showEntityDetails(entry)}
+                            role="button"
+                            tabindex="0"
+                        >
+                            <span class="initials">{getInitials(entry.name)}</span>
+                            <div class="initiative-badge">{entry.initiative}</div>
+                            {#if entry.type === 'character'}
+                                <div class="type-indicator">👤</div>
+                            {:else if entry.type === 'monster'}
+                                <div class="type-indicator">👹</div>
+                            {/if}
+                        </div>
+                        <div class="character-hp">
+                            <span class="hp-text">{entry.currentHP}/{entry.maxHP}</span>
+                            <div class="hp-bar">
+                                <div 
+                                    class="hp-fill" 
+                                    style="width: {entry.maxHP > 0 ? (entry.currentHP / entry.maxHP) * 100 : 0}%"
+                                ></div>
+                            </div>
+                        </div>
                     </div>
                 {/each}
             </div>
@@ -492,6 +698,52 @@
                             <strong>{entry.name}</strong>
                             <span class="initiative-value">{entry.initiative}</span>
                         </span>
+                        <div class="hp-controls">
+                            <div class="hp-display">
+                                <div class="hp-inputs">
+                                    <input 
+                                        type="number" 
+                                        class="hp-input current-hp"
+                                        value={entry.currentHP}
+                                        min="0"
+                                        max={entry.maxHP || 999}
+                                        oninput={(e) => handleHPInput(index, e)}
+                                        title="Current HP"
+                                    />
+                                    <span class="hp-separator">/</span>
+                                    <input 
+                                        type="number" 
+                                        class="hp-input max-hp"
+                                        value={entry.maxHP}
+                                        min="0"
+                                        oninput={(e) => handleHPInput(index, e, true)}
+                                        title="Max HP"
+                                    />
+                                </div>
+                                <div class="hp-buttons">
+                                    <button 
+                                        class="hp-btn damage-btn" 
+                                        onclick={() => adjustHP(index, -1)}
+                                        title="Take 1 damage"
+                                    >-1</button>
+                                    <button 
+                                        class="hp-btn damage-btn" 
+                                        onclick={() => adjustHP(index, -5)}
+                                        title="Take 5 damage"
+                                    >-5</button>
+                                    <button 
+                                        class="hp-btn heal-btn" 
+                                        onclick={() => adjustHP(index, 1)}
+                                        title="Heal 1 HP"
+                                    >+1</button>
+                                    <button 
+                                        class="hp-btn heal-btn" 
+                                        onclick={() => adjustHP(index, 5)}
+                                        title="Heal 5 HP"
+                                    >+5</button>
+                                </div>
+                            </div>
+                        </div>
                         <button onclick={() => removeEntry(index)} class="remove-btn">×</button>
                     </li>
                 {/each}
@@ -1148,6 +1400,40 @@
         margin-bottom: 1.5rem;
     }
 
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .save-status {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        animation: fadeInOut 3s ease-in-out;
+        white-space: nowrap;
+    }
+
+    .save-status.success {
+        background: linear-gradient(135deg, #c8e6c9, #a5d6a7);
+        color: #2e7d32;
+        border: 1px solid #4caf50;
+    }
+
+    .save-status.error {
+        background: linear-gradient(135deg, #ffcdd2, #ef9a9a);
+        color: #c62828;
+        border: 1px solid #f44336;
+    }
+
+    @keyframes fadeInOut {
+        0% { opacity: 0; transform: translateY(-10px); }
+        15% { opacity: 1; transform: translateY(0); }
+        85% { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0; transform: translateY(-10px); }
+    }
+
     .initiative-tracker h3 {
         margin: 0;
         color: #333;
@@ -1370,7 +1656,7 @@
     .character-track {
         display: flex;
         justify-content: center;
-        align-items: center;
+        align-items: flex-start;
         gap: 1rem;
         flex-wrap: wrap;
         margin: 1rem 0;
@@ -1378,6 +1664,13 @@
         background: white;
         border-radius: 8px;
         border: 1px solid #e0e0e0;
+    }
+
+    .character-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
     }
 
     .character-circle {
@@ -1393,6 +1686,37 @@
         cursor: pointer;
         transition: all 0.3s ease;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .character-hp {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        min-width: 60px;
+    }
+
+    .hp-text {
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: #333;
+        white-space: nowrap;
+    }
+
+    .hp-bar {
+        width: 40px;
+        height: 6px;
+        background: #e0e0e0;
+        border-radius: 3px;
+        overflow: hidden;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+    .hp-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #f44336 0%, #ff9800 50%, #4CAF50 100%);
+        transition: width 0.3s ease;
+        border-radius: 3px;
     }
 
     .character-circle:hover {
@@ -1487,6 +1811,7 @@
         border: 1px solid #e0e0e0;
         border-radius: 6px;
         transition: all 0.2s ease;
+        gap: 1rem;
     }
 
     .initiative-entry:hover {
@@ -1496,9 +1821,9 @@
 
     .entry-info {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex: 1;
+        flex-direction: column;
+        gap: 0.25rem;
+        min-width: 120px;
     }
 
     .entry-info strong {
@@ -1513,8 +1838,100 @@
         border-radius: 12px;
         font-weight: bold;
         font-size: 0.9rem;
-        min-width: 40px;
+        width: fit-content;
         text-align: center;
+    }
+
+    /* HP Controls */
+    .hp-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .hp-display {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .hp-inputs {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        background: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+    }
+
+    .hp-input {
+        width: 45px;
+        padding: 0.25rem;
+        text-align: center;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        font-size: 0.9rem;
+        font-weight: bold;
+    }
+
+    .hp-input.current-hp {
+        border-color: #f44336;
+        background: #ffebee;
+    }
+
+    .hp-input.max-hp {
+        border-color: #4CAF50;
+        background: #e8f5e8;
+    }
+
+    .hp-input:focus {
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.3);
+    }
+
+    .hp-separator {
+        font-weight: bold;
+        color: #666;
+        margin: 0 0.25rem;
+    }
+
+    .hp-buttons {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .hp-btn {
+        padding: 0.25rem 0.5rem;
+        border: none;
+        border-radius: 3px;
+        font-size: 0.8rem;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 30px;
+    }
+
+    .damage-btn {
+        background: #f44336;
+        color: white;
+    }
+
+    .damage-btn:hover {
+        background: #d32f2f;
+        transform: translateY(-1px);
+    }
+
+    .heal-btn {
+        background: #4CAF50;
+        color: white;
+    }
+
+    .heal-btn:hover {
+        background: #45a049;
+        transform: translateY(-1px);
     }
 
     .remove-btn {
@@ -1543,6 +1960,18 @@
     @media (prefers-color-scheme: dark) {
         .initiative-tracker h3 {
             color: #f6f6f6;
+        }
+
+        .save-status.success {
+            background: linear-gradient(135deg, #2e7d32, #388e3c);
+            color: #c8e6c9;
+            border-color: #4caf50;
+        }
+
+        .save-status.error {
+            background: linear-gradient(135deg, #c62828, #d32f2f);
+            color: #ffcdd2;
+            border-color: #f44336;
         }
 
         .dice-btn {
@@ -1604,6 +2033,39 @@
             color: #f6f6f6;
         }
 
+        .hp-inputs {
+            background: #2f2f2f;
+            border-color: #555;
+        }
+
+        .hp-input {
+            background: #404040;
+            border-color: #666;
+            color: #f6f6f6;
+        }
+
+        .hp-input.current-hp {
+            background: #4a2c2c;
+            border-color: #f44336;
+        }
+
+        .hp-input.max-hp {
+            background: #2c4a2c;
+            border-color: #4CAF50;
+        }
+
+        .hp-separator {
+            color: #ccc;
+        }
+
+        .hp-text {
+            color: #f6f6f6;
+        }
+
+        .hp-bar {
+            background: #555;
+        }
+
         /* Dark mode for initiative track */
         .initiative-track {
             background-color: #2f2f2f;
@@ -1633,6 +2095,14 @@
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
         }
 
+        .hp-text {
+            color: #f6f6f6;
+        }
+
+        .hp-bar {
+            background: #555;
+        }
+
         .current-turn {
             background: linear-gradient(135deg, #3e2723, #5d4037);
             border-color: #FF9800;
@@ -1651,10 +2121,25 @@
             min-width: 100%;
         }
 
-        .entry-info {
+        .initiative-entry {
             flex-direction: column;
-            align-items: flex-start;
             gap: 0.5rem;
+            align-items: stretch;
+        }
+
+        .entry-info {
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hp-controls {
+            align-self: center;
+        }
+
+        .hp-display {
+            flex-direction: row;
+            gap: 1rem;
         }
 
         .initiative-value {
@@ -1672,6 +2157,15 @@
             flex-direction: column;
             gap: 1rem;
             text-align: center;
+        }
+
+        .header-actions {
+            justify-content: center;
+        }
+
+        .save-status {
+            font-size: 0.8rem;
+            padding: 0.4rem 0.8rem;
         }
 
         .dice-input-row {
@@ -1725,6 +2219,21 @@
 
     .lookup-btn:hover {
         background-color: #1976D2;
+    }
+
+    .refresh-btn {
+        background-color: #FF9800;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: background-color 0.2s ease;
+    }
+
+    .refresh-btn:hover {
+        background-color: #F57C00;
     }
 
     /* Character circle enhancements */

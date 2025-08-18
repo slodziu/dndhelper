@@ -16,28 +16,31 @@ const DND_FOLDER = 'DnD Helper';
  * Check if we're running in Tauri
  */
 function isTauri() {
-  // Check for various Tauri environment indicators
-  if (typeof window !== 'undefined') {
-    // Check for Tauri global objects
-    if (window.__TAURI__ || window.__TAURI_METADATA__ || window.__TAURI_INVOKE__) {
-      return true;
-    }
-    
-    // Check if we're in a webview (common in Tauri apps)
-    if (window.navigator && window.navigator.userAgent && 
-        window.navigator.userAgent.includes('Tauri')) {
-      return true;
-    }
+  // Quick check for web environment first
+  if (typeof window !== 'undefined' && 
+      (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+    return false;
   }
   
-  // Check if Tauri APIs are available through imports
+  // Check if Tauri APIs are actually available and callable
   try {
-    return typeof invoke !== 'undefined' && typeof documentDir !== 'undefined';
-  } catch {
-    // If imports fail, check for alternative detection
-    return typeof window !== 'undefined' && 
-           (window.location.protocol === 'tauri:' || 
-            window.location.hostname === 'tauri.localhost');
+    // Test if we can access the Tauri APIs without errors
+    if (typeof invoke === 'undefined' || typeof documentDir === 'undefined') {
+      return false;
+    }
+    
+    // Additional check for Tauri environment
+    if (typeof window !== 'undefined') {
+      return window.location.protocol === 'tauri:' || 
+             window.location.hostname === 'tauri.localhost' ||
+             !!window['__TAURI__'] ||
+             !!window['__TAURI_METADATA__'];
+    }
+    
+    return true;
+  } catch (error) {
+    console.log('Tauri API check failed:', error.message);
+    return false;
   }
 }
 
@@ -141,6 +144,69 @@ export async function saveCharacters(characters) {
   } else {
     // Web build - use localStorage
     return saveToLocalStorage(characters);
+  }
+}
+
+/**
+ * Save a single character by updating the character list
+ * @param {Object} character - Character object to save
+ * @returns {Promise<boolean>} Success status
+ */
+export async function saveCharacter(character) {
+  try {
+    // Load existing characters
+    const characters = await loadCharacters();
+    
+    // Try multiple matching strategies to find the existing character
+    let existingIndex = -1;
+    
+    // Strategy 1: Exact name match
+    existingIndex = characters.findIndex(c => c.name === character.name);
+    
+    // Strategy 2: If no exact match, try to match based on partial name
+    // This handles cases like "Garb (Tamta)" vs "Garb"
+    if (existingIndex === -1 && character.name) {
+      // Try matching where the character name is contained in the stored name
+      existingIndex = characters.findIndex(c => {
+        if (!c.name || !character.name) return false;
+        
+        // Check if the character name is a substring of the stored name
+        // This handles "Garb" matching "Garb (Tamta)"
+        if (c.name.includes(character.name) || character.name.includes(c.name)) {
+          console.log(`Found partial name match: "${character.name}" matches "${c.name}"`);
+          return true;
+        }
+        
+        // Also try removing parentheses and extra info for comparison
+        const storedBase = c.name.split('(')[0].trim();
+        const charBase = character.name.split('(')[0].trim();
+        if (storedBase === charBase) {
+          console.log(`Found base name match: "${charBase}" from "${character.name}" matches "${c.name}"`);
+          return true;
+        }
+        
+        return false;
+      });
+    }
+    
+    if (existingIndex >= 0) {
+      // Update existing character but preserve the original name
+      const originalName = characters[existingIndex].name;
+      console.log(`Updating existing character: "${originalName}" (was saving as "${character.name}")`);
+      
+      // Update the character but keep the original name to maintain consistency
+      characters[existingIndex] = { ...character, name: originalName };
+    } else {
+      // Add new character
+      console.log(`Adding new character: "${character.name}"`);
+      characters.push(character);
+    }
+    
+    // Save the updated character list
+    return await saveCharacters(characters);
+  } catch (error) {
+    console.error('Error saving character:', error);
+    return false;
   }
 }
 
